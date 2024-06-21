@@ -1,0 +1,78 @@
+#include "config.hh"
+
+#include <unistd.h>
+#include <stdlib.h>
+#include <pwd.h>
+
+#include "simdini/ini.h"
+
+static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t kl_, const char *v_, size_t vl_, void *user_)
+{
+    vpkg_config *user = static_cast<vpkg_config *>(user_);
+    std::string_view section = std::string_view{s_, sl_};
+    std::string_view key = std::string_view{k_, kl_};
+    std::string_view value = std::string_view{v_, vl_};
+
+    auto [iterator, _] = user->insert(std::pair<std::string_view, vpkg_config_entry>{section, {}});
+
+    if (key == "url") {
+        iterator->second.url = value;
+    }
+
+    if (key == "deps") {
+        iterator->second.deps = value;
+    }
+
+    if (key == "name") {
+        iterator->second.name = value;
+    }
+
+    if (key == "base_url") {
+        iterator->second.base_url = value;
+    }
+
+    return 0;
+}
+
+int vpkg_config_parse(vpkg_config *out, const char *str, size_t len)
+{
+    if (!ini_parse_string(static_cast<const char *>(str), len, cb_ini_vpkg_config, out)) {
+        return 1;
+    }
+
+    for (auto &pair : *out) {
+        if (pair.first.back() == '/') {
+            fprintf(stderr, "Repos not implemented yet\n");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+std::string vpkg_config_path(const char *default_value)
+{
+    std::string config_home;
+
+    if (default_value) {
+        return std::string(default_value);
+    }
+
+    // Better: openat
+    {
+        const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
+
+        if (xdg_config_home != NULL) {
+            config_home = std::string(xdg_config_home);
+        } else {
+            struct passwd *p = getpwuid(getuid());
+            if (p == NULL) {
+                return "";
+            }
+
+            config_home = std::string(p->pw_dir) + "/.config";
+        }
+    }
+
+    return config_home + "/vpkg.ini";
+}
