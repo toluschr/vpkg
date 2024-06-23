@@ -1,15 +1,19 @@
 CC = gcc
-CC_FLAGS = -Wall -march=native
+CC_FLAGS = -Wall -march=native -Og -ggdb
 
 CXX = g++
-CXX_FLAGS = -Wall -march=native
+CXX_FLAGS = -Wall -march=native -Og -ggdb -fpermissive -std=c++17
 
-LD_FLAGS = -lcurl -lxbps
+LD_FLAGS = -lcurl -lxbps -larchive
 
 BIN = vpkg
 
 OBJ += vpkg.o
+OBJ += util.o
 OBJ += config.o
+OBJ += update.o
+OBJ += install.o
+OBJ += repodata.o
 OBJ += simdini/ini.o
 
 DEP = $(OBJ:%.o=%.d)

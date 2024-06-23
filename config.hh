@@ -5,6 +5,8 @@
 #include <string>
 #include <map>
 
+#include <xbps.h>
+
 #include <stddef.h>
 
 struct vpkg_config_entry {
@@ -33,5 +35,12 @@ int vpkg_config_parse(vpkg_config *out, const char *str, size_t len);
  * @return Config path on success
  */
 std::string vpkg_config_path(const char *default_value);
+
+struct vpkg_context {
+    bool verbose = false;
+    bool force = false;
+    vpkg_config config;
+    struct xbps_handle xbps_handle;
+};
 
 #endif // VPKG_CONFIG_HH_
