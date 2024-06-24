@@ -23,6 +23,7 @@
 
 #include "simdini/ini.h"
 #include "update.hh"
+#include "install.hh"
 #include "config.hh"
 #include "util.h"
 
@@ -88,7 +89,7 @@ int main(int argc, char **argv)
     memset(&ctx.xbps_handle, 0, sizeof(ctx.xbps_handle));
     curl_global_init(CURL_GLOBAL_ALL);
 
-    while ((opt = getopt(argc, argv, ":c:vf")) != -1) {
+    while ((opt = getopt(argc, argv, ":c:vfF")) != -1) {
         switch (opt) {
         case 'c':
             config_path = optarg;
@@ -97,7 +98,10 @@ int main(int argc, char **argv)
             ctx.verbose = true;
             break;
         case 'f':
-            ctx.force = true;
+            ctx.force_modified_since = true;
+            break;
+        case 'F':
+            ctx.force_reinstall = true;
             break;
         default:
             usage(EXIT_FAILURE);
@@ -143,11 +147,6 @@ int main(int argc, char **argv)
 
     xbps_init(&ctx.xbps_handle);
 
-    if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
-        xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));
-        goto end_xbps;
-    }
-
     if (setenv("XDEB_SHLIBS", VPKG_XDEB_SHLIBS, 1) != 0) {
         perror("failed to set shlibs env");
         goto end_xbps_lock;
@@ -161,11 +160,19 @@ int main(int argc, char **argv)
     if (strcmp(argv[0], "list") == 0) {
         rc = vpkg_do_list(&ctx.xbps_handle, &ctx.config) ? EXIT_SUCCESS : EXIT_FAILURE;
     } else if (strcmp(argv[0], "update") == 0) {
+        if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
+            xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));
+            goto end_xbps;
+        }
+
         rc = (vpkg_do_update(&ctx, argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
-        /*
     } else if (strcmp(argv[0], "install") == 0) {
-        rc = vpkg_do_install(&ctx) ? EXIT_SUCCESS : EXIT_FAILURE;
-        */
+        if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
+            xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));
+            goto end_xbps;
+        }
+
+        rc = (vpkg_do_install(&ctx, argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     } else {
         usage(EXIT_FAILURE);
     }

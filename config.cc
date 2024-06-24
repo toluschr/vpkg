@@ -17,18 +17,16 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
 
     if (key == "url") {
         iterator->second.url = value;
-    }
-
-    if (key == "deps") {
+    } else if (key == "deps") {
         iterator->second.deps = value;
-    }
-
-    if (key == "name") {
+    } else if (key == "name") {
         iterator->second.name = value;
-    }
-
-    if (key == "base_url") {
+    } else if (key == "base-url") {
         iterator->second.base_url = value;
+    } else if (key == "not-deps") {
+        iterator->second.not_deps = value;
+    } else {
+        return 1;
     }
 
     return 0;

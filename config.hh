@@ -14,6 +14,7 @@ struct vpkg_config_entry {
     std::string_view url;
     std::string_view base_url;
     std::string_view deps;
+    std::string_view not_deps;
 };
 
 typedef std::map<std::string_view, vpkg_config_entry> vpkg_config;
@@ -38,7 +39,8 @@ std::string vpkg_config_path(const char *default_value);
 
 struct vpkg_context {
     bool verbose = false;
-    bool force = false;
+    bool force_modified_since = false;
+    bool force_reinstall = false;
     vpkg_config config;
     struct xbps_handle xbps_handle;
 };

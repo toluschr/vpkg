@@ -23,7 +23,7 @@ struct vpkg_check_update_cb_data {
     std::vector<vpkg_config::iterator> packages_to_update;
 };
 
-static time_t get_last_modified(const char *url)
+time_t get_last_modified(const char *url)
 {
     long filetime = 0;
     CURLcode code = CURLE_OK;
@@ -82,7 +82,7 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    if (user->ctx->force) {
+    if (user->ctx->force_modified_since) {
         goto insert_and_out;
     }
 
@@ -130,16 +130,16 @@ int vpkg_do_update(vpkg_context *ctx, int argc, char **argv)
         return -1;
     }
 
-    if (system("xdeb -SQ >/dev/null 2>&1") != EXIT_SUCCESS) {
-        fprintf(stderr, "failed to update shlibs\n");
-        return -1;
-    }
-
     // @todo: Filter inside threads aswell.
     if ((errno = xbps_pkgdb_foreach_cb_multi(&ctx->xbps_handle, vpkg_check_update_cb, &d)) != 0) {
         fprintf(stderr, "xbps_pkgdb_foreach_cb_multi failed\n");
         return -1;
     }
 
-    return vpkg_download_and_install_multi(&ctx->xbps_handle, d.packages_to_update);
+    if (d.packages_to_update.size() == 0) {
+        fprintf(stderr, "Nothing to do.\n");
+        return -1;
+    }
+
+    return vpkg_download_and_install_multi(&ctx->xbps_handle, d.packages_to_update, ctx->force_reinstall);
 }
