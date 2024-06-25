@@ -1,3 +1,6 @@
 [submodule "simdini"]
 	path = simdini
 	url = https://github.com/toluschr/simdini.git
+[submodule "simdjson"]
+	path = simdjson
+	url = https://github.com/simdjson/simdjson
