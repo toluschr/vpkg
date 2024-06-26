@@ -31,14 +31,12 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
     const char *next;
     const char *pkgname;
     const char *install_date;
-    const char *build_options;
     xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
     vpkg_check_update_cb_data *user = static_cast<vpkg_check_update_cb_data *>(user_);
-    // vpkg_context *ctx = 
 
     assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
 
-    if (!is_xdeb(obj)) {
+    if (!is_xdeb(dict)) {
         return 0;
     }
 

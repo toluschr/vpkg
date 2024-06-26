@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-bool is_xdeb(xbps_object_t obj);
+bool is_xdeb(xbps_dictionary_t dict);
 bool yes_no_prompt(void);
 
 #ifdef __cplusplus

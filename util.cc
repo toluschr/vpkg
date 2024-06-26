@@ -3,14 +3,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-bool is_xdeb(xbps_object_t obj)
+bool is_xdeb(xbps_dictionary_t dict)
 {
     const char *tags;
-    xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
-
-    if (xbps_object_type(obj) != XBPS_TYPE_DICTIONARY) {
-        return false;
-    }
 
     if (!xbps_dictionary_get_cstring_nocopy(dict, "tags", &tags)) {
         return false;

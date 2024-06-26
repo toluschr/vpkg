@@ -49,7 +49,7 @@ static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *
 
     assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
 
-    if (!is_xdeb(obj)) {
+    if (!is_xdeb(dict)) {
         return 0;
     }
 
