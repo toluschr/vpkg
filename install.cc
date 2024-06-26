@@ -1,5 +1,6 @@
 #include "install.hh"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,7 @@ struct vpkg_do_update_thread_data {
 
     std::queue<struct vpkg_status_entry> *status;
 
+    std::vector<char *> *register_xbps;
     std::vector<char *> *install_xbps;
     sem_t *sem_continue;
 
@@ -64,6 +66,7 @@ struct vpkg_do_update_thread_data {
     size_t start;
     size_t size;
     int status_offset;
+    int manual_size;
 
     size_t i;
 };
@@ -277,7 +280,12 @@ static void *vpkg_do_update_thread(void *arg_)
             }
 
             sem_wait(arg->sem_data);
-            arg->install_xbps->push_back(line);
+            arg->register_xbps->push_back(line);
+
+            if (arg->i < arg->manual_size) {
+                arg->install_xbps->push_back(line);
+            }
+
             sem_post(arg->sem_data);
 
             fclose(f);
@@ -289,7 +297,7 @@ static void *vpkg_do_update_thread(void *arg_)
     return NULL;
 }
 
-int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<vpkg_config::iterator> &packages_to_update, bool force_reinstall)
+int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<vpkg_config::iterator> &packages_to_update, int manual_size, bool force_reinstall, bool update)
 {
     int rv;
     sem_t sem_notify;
@@ -297,6 +305,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
     sem_t sem_continue;
     std::queue<vpkg_status_entry> status;
     std::vector<char *> install_xbps;
+    std::vector<char *> register_xbps;
     std::atomic<bool> anyerr = false;
     std::atomic<unsigned long> threads_done = 0;
     std::atomic<unsigned long> cur_status_offset = 0;
@@ -347,6 +356,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
         thread_data[i].size = (packages_to_update.size() + (maxthreads - 1)) / maxthreads;
         thread_data[i].start = i * thread_data[i].size;
         thread_data[i].install_xbps = &install_xbps;
+        thread_data[i].register_xbps = &register_xbps;
         thread_data[i].sem_continue = &sem_continue;
         thread_data[i].sem_notify = &sem_notify;
         thread_data[i].sem_data = &sem_data;
@@ -354,6 +364,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
         thread_data[i].status = &status;
         thread_data[i].cur_status_offset = &cur_status_offset;
         thread_data[i].anyerr = &anyerr;
+        thread_data[i].manual_size = manual_size;
 
         if ((errno = pthread_create(&threads[i], NULL, vpkg_do_update_thread, &thread_data[i]))) {
             // @todo: handle this
@@ -414,7 +425,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
     }
 
     // Adds all packages to repo
-    index_add(xhp, install_xbps.data(), install_xbps.size());
+    index_add(xhp, register_xbps.data(), register_xbps.size());
 
     for (auto &pathname : install_xbps) {
         const char *pkgver;
@@ -428,7 +439,11 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
             continue;
         }
 
-        rv = xbps_transaction_install_pkg(xhp, pkgver, force_reinstall); // false);
+        if (update) {
+            rv = xbps_transaction_update_pkg(xhp, pkgver);
+        } else {
+            rv = xbps_transaction_install_pkg(xhp, pkgver, force_reinstall);
+        }
 
         // @todo: free vector
         switch (rv) {
@@ -506,7 +521,39 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
     return 0;
 }
 
-int vpkg_do_install(vpkg_context *ctx, int argc, char **argv)
+static int add_full_deptree(vpkg_context *ctx, std::vector<vpkg_config::iterator> *to_install, int from)
+{
+    size_t size = to_install->size();
+    for (size_t i = from; i < size; i++) {
+        std::string str{to_install->at(i)->second.deps};
+        char *saveptr = NULL;
+
+        char *tok = strtok_r(str.data(), " ", &saveptr);
+        while (tok) {
+            char buf[to_install->at(i)->second.deps.size() + 1];
+
+            if (!xbps_pkgpattern_name(buf, sizeof(buf), tok)) {
+                fprintf(stderr, "Invalid dependency: %s\n", tok);
+                return -1;
+            }
+
+            auto dep_it = ctx->config.find(buf);
+            if (dep_it != ctx->config.end() && std::find(to_install->begin(), to_install->end(), dep_it) == to_install->end()) {
+                to_install->push_back(dep_it);
+            }
+
+            tok = strtok_r(NULL, " ", &saveptr);
+        }
+    }
+
+    if (to_install->size() != size) {
+        add_full_deptree(ctx, to_install, size);
+    }
+
+    return 0;
+}
+
+int vpkg::do_install(vpkg_context *ctx, int argc, char **argv)
 {
     if (argc == 0) {
         fprintf(stderr, "usage: vpkg install <package...>\n");
@@ -530,17 +577,14 @@ int vpkg_do_install(vpkg_context *ctx, int argc, char **argv)
             }
         }
 
-        if (it->second.resolve_url(NULL) != 0) {
-            fprintf(stderr, "%s: Unable to resolve URL.\n", argv[i]);
-            continue;
-        }
-
         to_install.push_back(it);
     }
+
+    add_full_deptree(ctx, &to_install, 0);
 
     if (to_install.size() == 0) {
         return -1;
     }
 
-    return vpkg_download_and_install_multi(&ctx->xbps_handle, to_install, ctx->force_reinstall);
+    return vpkg::download_and_install_multi(&ctx->xbps_handle, to_install, argc, ctx->force_reinstall, false);
 }

@@ -111,5 +111,5 @@ int vpkg_do_update(vpkg_context *ctx, int argc, char **argv)
         return -1;
     }
 
-    return vpkg_download_and_install_multi(&ctx->xbps_handle, d.packages_to_update, ctx->force_reinstall);
+    return vpkg::download_and_install_multi(&ctx->xbps_handle, d.packages_to_update, d.packages_to_update.size(), ctx->force_reinstall, true);
 }

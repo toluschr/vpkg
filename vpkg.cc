@@ -181,7 +181,7 @@ int main(int argc, char **argv)
             goto end_xbps;
         }
 
-        rc = (vpkg_do_install(&ctx, argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = (vpkg::do_install(&ctx, argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     } else {
         usage(EXIT_FAILURE);
     }
