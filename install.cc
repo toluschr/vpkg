@@ -346,11 +346,6 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
         return -1;
     }
 
-    if (system("xdeb -SQ >/dev/null 2>&1") != EXIT_SUCCESS) {
-        fprintf(stderr, "failed to update shlibs\n");
-        return -1;
-    }
-
     if (maxthreads < 0) {
         // @todo: handle this
         return -1;
@@ -367,6 +362,11 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
 
     if (!yes_no_prompt()) {
         fprintf(stderr, "Aborting!\n");
+        return -1;
+    }
+
+    if (system("xdeb -SQ >/dev/null 2>&1") != EXIT_SUCCESS) {
+        fprintf(stderr, "failed to update shlibs\n");
         return -1;
     }
 
