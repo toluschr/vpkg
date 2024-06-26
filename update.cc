@@ -56,7 +56,6 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    std::string url;
     if (it->second.resolve_url(user->ctx->force_modified_since ? NULL : &last_modified) == -1) {
         return -1;
     }
