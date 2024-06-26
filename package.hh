@@ -3,14 +3,15 @@
 
 namespace vpkg {
 struct package {
-    std::string url;
-    std::string name;
-    std::string deps;
-    std::string base_url;
-    std::string not_deps;
-    std::string filename;
+    std::string_view url;
+    std::string_view name;
+    std::string_view deps;
+    std::string_view version;
+    std::string_view not_deps;
+    time_t last_modified;
+    // std::string_view last_modified;
 
-    int resolve_url(time_t *out);
+    // int get_last_modified(time_t *out);
 };
 }
 

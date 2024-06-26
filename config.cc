@@ -22,12 +22,20 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
             iterator->second.deps = value;
         } else if (key == "name") {
             iterator->second.name = value;
-        } else if (key == "base-url") {
-            iterator->second.base_url = value;
-        } else if (key == "not-deps") {
+        } else if (key == "not_deps") {
             iterator->second.not_deps = value;
-        } else if (key == "filename") {
-            iterator->second.filename = value;
+        } else if (key == "version") {
+            iterator->second.version = value;
+        } else if (key == "last_modified") {
+            char *end;
+            int eno = errno;
+
+            unsigned long last_modified = strtoul(value.data(), &end, 10);
+            if (errno != eno || *end != '\n' || end == value.data()) {
+                return 1;
+            }
+
+            iterator->second.last_modified = (time_t)last_modified;
         } else {
             return 1;
         }

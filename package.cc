@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#if 0
 static size_t simdjson_write_callback(void *data, size_t size, size_t nmemb, void *user_)
 {
     std::string *user = static_cast<std::string *>(user_);
@@ -212,3 +213,4 @@ out_cleanup_url:
 
     return rv;
 }
+#endif
