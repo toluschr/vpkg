@@ -91,8 +91,11 @@ def print_package(p: PackageSpecification):
 
 for name, source in config.sources.items():
     if isinstance(source, DebianSource):
-        # @todo: pathlib + urllib
-        package_url = f"{source.base_url}/{source.distribution}/dists/{'/'.join(source.components)}/binary-{machine}/Packages"
+        parts = urllib.parse.urlparse(source.base_url)
+        distribution_path = pathlib.Path(parts.path if parts.path else "/")/source.distribution
+        package_path = (distribution_path/"dists"/'/'.join(source.components)/f"binary-{machine}"/"Packages").as_posix()
+
+        package_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, package_path, "", "", ""))
         response = requests.get(package_url)
         content = response.content
 
@@ -106,9 +109,12 @@ for name, source in config.sources.items():
 
             packages = source.packages if source.packages is not None else {}
 
+            binary_path = (distribution_path/v["Filename"]).as_posix()
+            binary_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, binary_path, "", "", ""))
+
             p = packages.setdefault(k, PackageSpecification(name=None, not_deps=None, deps=None, url=None, last_modified=None, version=None))
             p.name = p.name if p.name is not None else k
-            p.url = p.url if p.url is not None else source.base_url + "/" + source.distribution + "/" + v["Filename"]
+            p.url = p.url if p.url is not None else binary_url
             p.version = p.version if p.version is not None else v["Version"]
             print_package(p)
     elif isinstance(source, GithubSource):
