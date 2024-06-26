@@ -9,23 +9,30 @@
 static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t kl_, const char *v_, size_t vl_, void *user_)
 {
     vpkg_config *user = static_cast<vpkg_config *>(user_);
-    std::string_view section = std::string_view{s_, sl_};
+    std::string_view section = s_ ? std::string_view{s_, sl_} : std::string_view{""};
     std::string_view key = std::string_view{k_, kl_};
     std::string_view value = std::string_view{v_, vl_};
 
     auto [iterator, _] = user->insert(std::pair<std::string_view, vpkg::package>{section, {}});
 
-    if (key == "url") {
-        iterator->second.url = value;
-    } else if (key == "deps") {
-        iterator->second.deps = value;
-    } else if (key == "name") {
-        iterator->second.name = value;
-    } else if (key == "base-url") {
-        iterator->second.base_url = value;
-    } else if (key == "not-deps") {
-        iterator->second.not_deps = value;
+    if (section.size()) {
+        if (key == "url") {
+            iterator->second.url = value;
+        } else if (key == "deps") {
+            iterator->second.deps = value;
+        } else if (key == "name") {
+            iterator->second.name = value;
+        } else if (key == "base-url") {
+            iterator->second.base_url = value;
+        } else if (key == "not-deps") {
+            iterator->second.not_deps = value;
+        } else if (key == "filename") {
+            iterator->second.filename = value;
+        } else {
+            return 1;
+        }
     } else {
+        fprintf(stderr, "Not supported!\n");
         return 1;
     }
 
