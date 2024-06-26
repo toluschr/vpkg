@@ -44,7 +44,6 @@ static void usage(int code)
 static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *, bool *)
 {
     const char *pkgname;
-    // const char *build_options;
     xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
 
     assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
@@ -57,20 +56,27 @@ static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *
         return 0;
     }
 
-    // if (!xbps_dictionary_get_cstring_nocopy(dict, "build-options", &build_options)) {
-        // return 0;
-    // }
-
-    // printf("%s\n", build_options);
-
     printf("%s\n", pkgname);
     return 0;
 }
 
-static bool vpkg_do_list(struct xbps_handle *xhp, vpkg_config *conf)
+static bool vpkg_do_list(struct vpkg_context *ctx)
 {
-    xbps_pkgdb_foreach_cb(xhp, vpkg_list_cb, NULL);
-    return true;
+    if (ctx->repository) {
+        for (auto &e : ctx->config) {
+            std::string name{e.first};
+
+            xbps_dictionary_t dict = xbps_pkgdb_get_pkg(&ctx->xbps_handle, name.c_str());
+            if (dict == NULL) {
+                fprintf(stdout, "%s\n", name.c_str());
+            } else {
+                fprintf(stdout, "%s*\n", name.c_str());
+            }
+        }
+        return true;
+    } else {
+        return xbps_pkgdb_foreach_cb(&ctx->xbps_handle, vpkg_list_cb, NULL) == 0;
+    }
 }
 
 int main(int argc, char **argv)
@@ -89,10 +95,13 @@ int main(int argc, char **argv)
     memset(&ctx.xbps_handle, 0, sizeof(ctx.xbps_handle));
     curl_global_init(CURL_GLOBAL_ALL);
 
-    while ((opt = getopt(argc, argv, ":c:vfF")) != -1) {
+    while ((opt = getopt(argc, argv, ":c:vfFR")) != -1) {
         switch (opt) {
         case 'c':
             config_path = optarg;
+            break;
+        case 'R':
+            ctx.repository = true;
             break;
         case 'v':
             ctx.verbose = true;
@@ -158,7 +167,7 @@ int main(int argc, char **argv)
     }
 
     if (strcmp(argv[0], "list") == 0) {
-        rc = vpkg_do_list(&ctx.xbps_handle, &ctx.config) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = vpkg_do_list(&ctx) ? EXIT_SUCCESS : EXIT_FAILURE;
     } else if (strcmp(argv[0], "update") == 0) {
         if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
             xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));

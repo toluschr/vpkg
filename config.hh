@@ -33,6 +33,7 @@ std::string vpkg_config_path(const char *default_value);
 
 struct vpkg_context {
     bool verbose = false;
+    bool repository = false;
     bool force_modified_since = false;
     bool force_reinstall = false;
     vpkg_config config;
