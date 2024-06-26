@@ -205,6 +205,8 @@ static void *vpkg_do_update_thread(void *arg_)
             return NULL;
         }
 
+        std::string version;
+        std::string name;
         std::string deps;
         std::string not_deps;
 
@@ -248,7 +250,13 @@ static void *vpkg_do_update_thread(void *arg_)
             deps = "--deps=";
             deps += cur->second.deps;
 
-            execlp("xdeb", "xdeb", "-edR", not_deps.c_str(), deps.c_str(), "--", deb_package_path, NULL);
+            name = "--name=";
+            name += cur->first;
+
+            version = "--version=";
+            version += cur->second.version;
+
+            execlp("xdeb", "xdeb", "-edR", not_deps.c_str(), deps.c_str(), name.c_str(), version.c_str(), "--", deb_package_path, NULL);
             break;
         default:
             // ignore error, @todo: handle EINTR
