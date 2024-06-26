@@ -91,13 +91,13 @@ static int progressfn(void *arg_, curl_off_t dltotal, curl_off_t dlnow, curl_off
     return 0;
 }
 
-static int download(const char *url, FILE *file, vpkg_do_update_thread_data *arg)
+static CURLcode download(const char *url, FILE *file, vpkg_do_update_thread_data *arg)
 {
     CURLcode code = CURLE_OK;
 
     CURL *curl = curl_easy_init();
     if (curl == NULL) {
-        return -1;
+        return CURLE_FAILED_INIT;
     }
 
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_URL, url) : code;
@@ -105,11 +105,13 @@ static int download(const char *url, FILE *file, vpkg_do_update_thread_data *arg
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressfn) : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_XFERINFODATA, arg) : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) : code;
+    // code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L) : code;
+    code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.8.0") : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_WRITEDATA, file) : code;
     code = (code == CURLE_OK) ? curl_easy_perform(curl) : code;
     curl_easy_cleanup(curl);
 
-    return (code == CURLE_OK) ? 0 : -1;
+    return code;
 }
 
 static void *vpkg_do_update_thread(void *arg_)
@@ -158,13 +160,16 @@ static void *vpkg_do_update_thread(void *arg_)
         if (f == NULL) {
             // @todo: Handle this
             *arg->threads_done += 1;
+            *arg->anyerr = true;
             sem_post(arg->sem_notify);
             return NULL;
         }
 
         // download all packages first
-        if (download(url.c_str(), f, arg) != CURLE_OK) {
+        CURLcode code;
+        if ((code = download(url.c_str(), f, arg)) != CURLE_OK) {
             *arg->threads_done += 1;
+            *arg->anyerr = true;
             sem_post(arg->sem_notify);
             return NULL;
         }
