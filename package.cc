@@ -62,23 +62,50 @@ static int get_latest_url_github(CURLU *url, const vpkg::package *e, std::string
 
     simdjson::ondemand::document json = p.iterate(json_str);
 
-    for (auto asset : json["assets"]) {
-        if (wildcard_match(e->filename, asset["name"])) {
+    auto document = json.get_object();
+    if (document.error()) {
+        fprintf(stderr, "github: Response is not an object\n");
+        return -1;
+    }
+
+    auto assets = document["assets"].get_array();
+    if (assets.error()) {
+        fprintf(stderr, "github: Response does not contain array 'assets'\n");
+        return -1;
+    }
+
+    for (auto asset : assets) {
+        auto name = asset["name"].get_string();
+        if (name.error()) {
+            fprintf(stderr, "github: Response does not contain string 'name'\n");
+            return -1;
+        }
+
+        if (wildcard_match(e->filename, name.value())) {
+            std::string updated_at_str;
+            struct tm tm;
+
             if (last_modified) {
-                struct tm tm;
-                std::string updated_at_str;
-                asset["updated_at"].get_string(updated_at_str);
+                if (asset["updated_at"].get_string(updated_at_str)) {
+                    fprintf(stderr, "github: Response does not contain string 'updated_at'\n");
+                    return -1;
+                }
 
                 if (strptime(updated_at_str.c_str(), "%Y-%M-%dT%H:%M:%SZ", &tm) == NULL) {
                     fprintf(stderr, "unable to parse timestamp\n");
                     return -1;
                 }
-
-                *last_modified = mktime(&tm);
             }
 
             if (out_url) {
-                asset["browser_download_url"].get_string(*out_url);
+                if (asset["browser_download_url"].get_string(*out_url)) {
+                    fprintf(stderr, "github: Response does not contain string 'browser_download_url'\n");
+                    return -1;
+                }
+            }
+
+            if (last_modified) {
+                *last_modified = mktime(&tm);
             }
         }
     }
