@@ -1,0 +1,130 @@
+#!/bin/env python3
+
+import dataclasses
+import datetime
+import requests
+import platform
+import pathlib
+import tomllib
+import fnmatch
+import dacite
+import typing
+import json
+
+import urllib.parse
+
+@dataclasses.dataclass
+class PackageSpecification():
+    url: typing.Optional[str]
+    name: typing.Optional[str]
+    not_deps: typing.Optional[str]
+    version: typing.Optional[str]
+    last_modified: typing.Optional[str]
+    deps: typing.Optional[list[str]]
+
+@dataclasses.dataclass
+class GithubAsset():
+    name: str
+    updated_at: str
+    browser_download_url: str
+
+@dataclasses.dataclass
+class GithubSource(PackageSpecification):
+    repository: str
+    pattern: str
+
+@dataclasses.dataclass
+class DebianSource():
+    base_url: str
+    distribution: str
+    components: list[str]
+    packages: typing.Optional[dict[str, PackageSpecification]]
+    whitelist: typing.Optional[list[str]]
+    blacklist: typing.Optional[list[str]]
+
+@dataclasses.dataclass
+class GithubRelease():
+    assets: list[GithubAsset]
+
+@dataclasses.dataclass
+class Config():
+    github_token: typing.Optional[str]
+    sources: typing.Optional[dict[str, DebianSource|GithubSource]]
+
+machine = platform.machine()
+match machine:
+    case "x86_64": machine = "amd64"
+    case _: raise ValueError(machine)
+
+p = tomllib.load(open("vpkg-sync.toml", "rb"))
+
+config = dacite.from_dict(data_class=Config, data=p)
+
+def parse_debian_package(string: bytes | str):
+    if isinstance(string, bytes):
+        string = string.decode()
+
+    assert isinstance(string, str)
+    return [dict([em.split(": ") for em in p.split("\n") if not em[0].isspace()]) for p in string.split("\n\n") if len(p) > 0]
+
+def print_package(p: PackageSpecification):
+    print(f"[{p.name}]")
+
+    if p.url is not None:
+        print(f"url = {p.url}")
+
+    if p.deps is not None:
+        print(f"deps = {' '.join(p.deps)}")
+
+    if p.not_deps is not None:
+        print(f"not_deps = {' '.join(p.not_deps)}")
+
+    if p.version is not None:
+        print(f"version = {p.version}")
+
+    if p.last_modified is not None:
+        print(f"last_modified = {p.last_modified}")
+
+    print()
+
+for name, source in config.sources.items():
+    if isinstance(source, DebianSource):
+        # @todo: pathlib + urllib
+        package_url = f"{source.base_url}/{source.distribution}/dists/{'/'.join(source.components)}/binary-{machine}/Packages"
+        response = requests.get(package_url)
+        content = response.content
+
+        for item in parse_debian_package(content):
+            k, v = item["Package"], item
+            if source.whitelist is not None and k not in source.whitelist:
+                continue
+
+            if source.blacklist is not None and k in source.blacklist:
+                continue
+
+            packages = source.packages if source.packages is not None else {}
+
+            p = packages.setdefault(k, PackageSpecification(name=None, not_deps=None, deps=None, url=None, last_modified=None, version=None))
+            p.name = p.name if p.name is not None else k
+            p.url = p.url if p.url is not None else source.base_url + "/" + source.distribution + "/" + v["Filename"]
+            p.version = p.version if p.version is not None else v["Version"]
+            print_package(p)
+
+    if isinstance(source, GithubSource):
+        path = (pathlib.Path("/")/"repos"/source.repository/"releases"/"latest").as_posix()
+        url = urllib.parse.urlunparse(("https", "api.github.com", path, "", "", ""))
+
+        response = requests.get(url)
+        release = dacite.from_dict(data_class=GithubRelease, data=response.json())
+
+        asset = None
+        for asset_ in release.assets:
+            if fnmatch.fnmatch(asset_.name, source.pattern):
+                asset = asset_
+
+        assert asset is not None
+
+        source.name = source.name if source.name is not None else name
+        source.url = source.url if source.url is not None else asset.browser_download_url
+        source.last_modified = source.last_modified if source.last_modified is not None else asset.updated_at
+        print_package(source)

@@ -1,0 +1,50 @@
+# configure packages
+# [packages.discord]
+# url = "https://discord.com/api/download?platform=linux&format=deb"
+# 
+# [packages.code]
+# url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
+# 
+# [packages.gitkraken]
+# not_deps = "musl"
+# url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
+# 
+# [packages.obsidian]
+# url = "https://github.com/obsidianmd/obsidian-releases"
+# filename = "obsidian-*-amd64.deb"
+# 
+# [packages.figma-linux]
+# url = "https://github.com/Figma-Linux/figma-linux"
+# filename = "figma-linux_*_linux_amd64.deb"
+# 
+# [brave-browser]
+# url = "https://github.com/brave/brave-browser"
+# filename = "brave-browser_*_amd64.deb"
+
+[sources.obsidian]
+repository = "obsidianmd/obsidian-releases"
+pattern = "obsidian-*-amd64.deb"
+
+[sources.figma-linux]
+repository = "Figma-Linux/figma-linux"
+pattern = "figma-linux_*_linux_amd64.deb"
+
+[sources.brave-browser]
+repository = "brave/brave-browser"
+pattern = "*_amd64.deb"
+
+# configure packages
+[sources.slack]
+base_url = "https://packagecloud.io/slacktechnologies/slack/"
+distribution = "debian"
+components = ["jessie", "main"]
+
+[sources.llvm19]
+base_url = "https://apt.llvm.org/"
+distribution = "buster"
+components = ["llvm-toolchain-buster", "main"]
+whitelist = ["libclang-cpp19", "clang-format-19"]
+
+[sources.llvm19.packages.clang-format-19]
+name = "clang-format19"
+deps = ["libllvm19>=0", "libclang-cpp19>=0"]
