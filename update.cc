@@ -27,7 +27,7 @@ struct vpkg_check_update_cb_data {
 static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *user_, bool *)
 {
     struct tm t;
-    time_t last_modified;
+    // time_t last_modified;
     const char *next;
     const char *pkgname;
     const char *install_date;
@@ -54,13 +54,21 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
+    /*
     if (it->second.resolve_url(user->ctx->force_modified_since ? NULL : &last_modified) == -1) {
         return -1;
     }
+    */
 
     if (user->ctx->force_modified_since) {
         goto insert_and_out;
     }
+
+    /*
+    if (it->second.get_last_modified(&last_modified) != 0) {
+        return 0;
+    }
+    */
 
     // Parse timestamp
     memset(&t, 0, sizeof(t));
@@ -71,7 +79,7 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    if (last_modified <= mktime(&t)) {
+    if (it->second.last_modified <= mktime(&t)) {
         return 0;
     }
 
