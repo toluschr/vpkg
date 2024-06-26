@@ -33,6 +33,11 @@ pattern = "figma-linux_*_linux_amd64.deb"
 repository = "brave/brave-browser"
 pattern = "*_amd64.deb"
 
+[sources.spotify]
+base_url = "http://repository.spotify.com"
+distribution = ""
+components = ["stable", "non-free"]
+
 # configure packages
 [sources.slack]
 base_url = "https://packagecloud.io/slacktechnologies/slack/"
