@@ -276,7 +276,7 @@ bool repodata_commit(struct xbps_handle *xhp, const char *repodir,
 
 int index_add(struct xbps_handle *xhp, char **argv, int nargs)
 {
-    xbps_dictionary_t idx, idxmeta, idxstage, binpkgd, curpkgd;
+    xbps_dictionary_t idx, idxmeta, idxstage;
 
     // Create repo
     // @error: ignore

@@ -24,7 +24,7 @@ static bool wildcard_match(const std::string_view &wildcard, const std::string_v
     case '*':
         if (wildcard.size() == 1) return true;
 
-        for (int j = 0; j < match.size(); j++) {
+        for (size_t j = 0; j < match.size(); j++) {
             if (wildcard_match(wildcard.substr(1), match.substr(j))) {
                 return true;
             }

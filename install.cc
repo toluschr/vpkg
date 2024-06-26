@@ -28,7 +28,7 @@
 struct vpkg_status_entry {
     vpkg_status_entry() = delete;
 
-    vpkg_status_entry(const std::string_view &name_, int offset_,
+    vpkg_status_entry(const std::string_view &name_, unsigned long offset_,
                       curl_off_t dltotal_, curl_off_t dlnow_,
                       curl_off_t ultotal_, curl_off_t ulnow_) :
         name{name_},
@@ -39,7 +39,7 @@ struct vpkg_status_entry {
         ulnow{ulnow_} {}
 
     std::string_view name;
-    int offset;
+    unsigned long offset;
     curl_off_t dltotal;
     curl_off_t dlnow;
     curl_off_t ultotal;
@@ -50,8 +50,8 @@ struct vpkg_do_update_thread_data {
     const std::vector<vpkg_config::iterator> *packages_to_update;
 
     std::atomic<bool> *anyerr;
-    std::atomic<int> *cur_status_offset;
-    std::atomic<int> *threads_done;
+    std::atomic<unsigned long> *cur_status_offset;
+    std::atomic<unsigned long> *threads_done;
 
     std::queue<struct vpkg_status_entry> *status;
 
@@ -330,9 +330,9 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
     std::queue<vpkg_status_entry> status;
     std::vector<char *> install_xbps;
     std::atomic<bool> anyerr = false;
-    std::atomic<int> threads_done = 0;
-    std::atomic<int> cur_status_offset = 0;
-    long maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
+    std::atomic<unsigned long> threads_done = 0;
+    std::atomic<unsigned long> cur_status_offset = 0;
+    unsigned long maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
 
     if (sem_init(&sem_data, 0, 1) < 0) {
         return -1;
@@ -346,7 +346,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
         return -1;
     }
 
-    if (maxthreads < 0) {
+    if (maxthreads == (unsigned long)-1) {
         // @todo: handle this
         return -1;
     }
@@ -373,7 +373,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
     pthread_t threads[maxthreads];
     struct vpkg_do_update_thread_data thread_data[maxthreads];
 
-    int i;
+    unsigned long i;
     for (i = 0; i < maxthreads; i++) {
         thread_data[i].packages_to_update = &packages_to_update;
         thread_data[i].size = (packages_to_update.size() + (maxthreads - 1)) / maxthreads;
@@ -393,7 +393,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
         }
     }
 
-    int last_offset_printed = 0;
+    unsigned long last_offset = 0;
     while (threads_done < i) {
         sem_wait(&sem_notify);
 
@@ -408,10 +408,10 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
             status.pop();
             sem_post(&sem_data);
 
-            if (last_offset_printed < temp_entry.offset)
-                fprintf(stderr, "\033[%dB", temp_entry.offset - last_offset_printed);
-            if (last_offset_printed > temp_entry.offset)
-                fprintf(stderr, "\033[%dA", last_offset_printed - temp_entry.offset);
+            if (last_offset < temp_entry.offset)
+                fprintf(stderr, "\033[%ldB", temp_entry.offset - last_offset);
+            if (last_offset > temp_entry.offset)
+                fprintf(stderr, "\033[%ldA", last_offset - temp_entry.offset);
 
             double progress;
             if (temp_entry.dltotal == 0)
@@ -419,16 +419,17 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
             else
                 progress = (100.0l * temp_entry.dlnow) / (double)temp_entry.dltotal;
 
-            fprintf(stderr, "\r\033[K%d %.*s %g %%", temp_entry.offset, (int)temp_entry.name.size(), temp_entry.name.data(), progress);
+            fprintf(stderr, "\r\033[K%.*s %g %%", (int)temp_entry.name.size(), temp_entry.name.data(), progress);
+            fflush(stderr);
 
-            last_offset_printed = temp_entry.offset;
+            last_offset = temp_entry.offset;
         }
     }
 
     printf("\n");
 
     if (anyerr) {
-        for (int j = 0; j < i; j++) {
+        for (unsigned long j = 0; j < i; j++) {
             pthread_kill(threads[j], SIGINT);
         }
 
@@ -438,7 +439,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
 
     sem_post(&sem_continue);
 
-    for (int j = 0; j < i; j++) {
+    for (unsigned long j = 0; j < i; j++) {
         if ((errno = pthread_join(threads[j], NULL))) {
             perror("pthread_join");
         }
@@ -486,7 +487,7 @@ int vpkg_download_and_install_multi(struct xbps_handle *xhp, const std::vector<v
             xbps_object_release(binpkgd);
             break;
         case ENODEV:
-            fprintf(stderr, "%s: Missing dependencies.\n", pkgver, rv);
+            fprintf(stderr, "%s: Missing dependencies.\n", pkgver);
             xbps_object_release(binpkgd);
             return -1;
         default:
