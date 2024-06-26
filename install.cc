@@ -124,8 +124,8 @@ static void *vpkg_do_update_thread(void *arg_)
         if (length < 0) {
             // @todo: Handle this
             *arg->threads_done += 1;
-            sem_post(arg->sem_notify);
             *arg->anyerr = true;
+            sem_post(arg->sem_notify);
             return NULL;
         }
 
