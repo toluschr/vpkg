@@ -26,9 +26,9 @@ struct vpkg_check_update_cb_data {
 
 static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *user_, bool *)
 {
-    struct tm t;
     // time_t last_modified;
     const char *next;
+    const char *pkgver;
     const char *pkgname;
     const char *install_date;
     xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
@@ -37,6 +37,10 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
     assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
 
     if (!is_xdeb(dict)) {
+        return 0;
+    }
+
+    if (!xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver)) {
         return 0;
     }
 
@@ -64,23 +68,37 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         goto insert_and_out;
     }
 
-    /*
-    if (it->second.get_last_modified(&last_modified) != 0) {
-        return 0;
-    }
-    */
+    if (it->second.version.size()) {
+        std::string new_version{it->second.version};
+        std::string old_version;
+        const char *version = xbps_pkg_version(pkgver);
+        const char *revision = xbps_pkg_revision(pkgver);
 
-    // Parse timestamp
-    memset(&t, 0, sizeof(t));
+        if (version == NULL || revision == NULL) {
+            fprintf(stderr, "unable to get version or revision: %s\n", pkgver);
+            return 0;
+        }
 
-    next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
-    if (next == NULL || *next != '\0' || next == install_date) {
-        fprintf(stderr, "%s: failed to parse package install_date\n", pkgname);
-        return 0;
-    }
+        old_version = std::string{version, revision - version};
 
-    if (it->second.last_modified <= mktime(&t)) {
-        return 0;
+        if (xbps_cmpver(old_version.c_str(), new_version.c_str()) <= 0) {
+            return 0;
+        }
+    } else {
+        struct tm t;
+
+        // Parse timestamp
+        memset(&t, 0, sizeof(t));
+
+        next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
+        if (next == NULL || *next != '\0' || next == install_date) {
+            fprintf(stderr, "%s: failed to parse package install_date\n", pkgname);
+            return 0;
+        }
+
+        if (it->second.last_modified <= mktime(&t)) {
+            return 0;
+        }
     }
 
 insert_and_out:

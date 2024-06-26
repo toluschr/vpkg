@@ -9,6 +9,7 @@ import tomllib
 import fnmatch
 import dacite
 import typing
+import time
 import json
 
 import urllib.parse
@@ -19,7 +20,7 @@ class PackageSpecification():
     name: typing.Optional[str]
     not_deps: typing.Optional[str]
     version: typing.Optional[str]
-    last_modified: typing.Optional[str]
+    last_modified: typing.Optional[str|datetime.datetime]
     deps: typing.Optional[list[str]]
 
 @dataclasses.dataclass
@@ -49,7 +50,7 @@ class GithubRelease():
 @dataclasses.dataclass
 class Config():
     github_token: typing.Optional[str]
-    sources: typing.Optional[dict[str, DebianSource|GithubSource]]
+    sources: typing.Optional[dict[str, DebianSource|GithubSource|PackageSpecification]]
 
 machine = platform.machine()
 match machine:
@@ -83,7 +84,8 @@ def print_package(p: PackageSpecification):
         print(f"version = {p.version}")
 
     if p.last_modified is not None:
-        print(f"last_modified = {p.last_modified}")
+        assert isinstance(p.last_modified, datetime.datetime)
+        print(f"last_modified = {int(time.mktime(p.last_modified.timetuple()))}")
 
     print()
 
@@ -109,8 +111,7 @@ for name, source in config.sources.items():
             p.url = p.url if p.url is not None else source.base_url + "/" + source.distribution + "/" + v["Filename"]
             p.version = p.version if p.version is not None else v["Version"]
             print_package(p)
-
-    if isinstance(source, GithubSource):
+    elif isinstance(source, GithubSource):
         path = (pathlib.Path("/")/"repos"/source.repository/"releases"/"latest").as_posix()
         url = urllib.parse.urlunparse(("https", "api.github.com", path, "", "", ""))
 
@@ -124,7 +125,16 @@ for name, source in config.sources.items():
 
         assert asset is not None
 
+        t = datetime.datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
+
         source.name = source.name if source.name is not None else name
         source.url = source.url if source.url is not None else asset.browser_download_url
-        source.last_modified = source.last_modified if source.last_modified is not None else asset.updated_at
+        source.last_modified = source.last_modified if source.last_modified is not None else t
+        print_package(source)
+    elif isinstance(source, PackageSpecification):
+        response = requests.head(source.url, allow_redirects=True)
+        t = datetime.datetime.strptime(response.headers["last-modified"], "%a, %d %b %Y %H:%M:%S %Z")
+
+        source.name = source.name if source.name is not None else name
+        source.last_modified = source.last_modified if source.last_modified is not None else t
         print_package(source)
