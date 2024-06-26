@@ -232,8 +232,6 @@ static void *vpkg_do_update_thread(void *arg_)
                 exit(EXIT_FAILURE);
             }
 
-            fprintf(stderr, "%s\n", deb_package_path);
-
             not_deps = "--not-deps=";
             not_deps += cur->second.not_deps;
 
@@ -285,37 +283,7 @@ static void *vpkg_do_update_thread(void *arg_)
             fclose(f);
             break;
         }
-
-
-        // @todo: assert size < INT_MAX
-        // @todo: assert no special chars in pkgname
-        /*
-        length = snprintf(NULL, 0, "xdeb -Sed -- /tmp/vpkg/%d/%.*s.deb", gettid(), (int)cur->first.size(), cur->first.data());
-        if (length < 0) {
-            sem_post(arg->sem_notify);
-            return NULL;
-        }
-
-        char buf[length + 1];
-        length = snprintf(buf, sizeof(buf), "xdeb -Sed -- /tmp/vpkg/%d/%.*s.deb", gettid(), (int)cur->first.size(), cur->first.data());
-        if (length < 0) {
-            sem_post(arg->sem_notify);
-            return NULL;
-        }
-
-        int retval = system(buf);
-        if (retval < 0) {
-            perror("xdeb");
-        }
-
-        if (retval != 0) {
-            fprintf(stderr, "xdeb failed\n");
-        }
-        */
-
-        // printf("%d\n", retval);
     }
-
 
     sem_post(arg->sem_notify);
     return NULL;

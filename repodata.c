@@ -312,10 +312,6 @@ int index_add(struct xbps_handle *xhp, char **argv, int nargs)
         const char *pkgver;
         char sha256[XBPS_SHA256_SIZE];
         char pkgname[XBPS_NAME_SIZE];
-
-        // filename = strrchr(pathname, '/');
-        // filename = filename ? pathname : filename + 1;
-
         xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(pathname, "/props.plist");
 
         if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "architecture", &architecture)) {
