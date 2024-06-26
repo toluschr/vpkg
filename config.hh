@@ -9,15 +9,9 @@
 
 #include <stddef.h>
 
-struct vpkg_config_entry {
-    std::string_view name;
-    std::string_view url;
-    std::string_view base_url;
-    std::string_view deps;
-    std::string_view not_deps;
-};
+#include "package.hh"
 
-typedef std::map<std::string_view, vpkg_config_entry> vpkg_config;
+typedef std::map<std::string_view, vpkg::package> vpkg_config;
 
 // Planned for future removal
 

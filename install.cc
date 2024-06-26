@@ -19,6 +19,8 @@
 #include <queue>
 
 #include "config.hh"
+#include "update.hh"
+#include "version.hh"
 
 #include "repodata.h"
 #include "util.h"
@@ -557,6 +559,11 @@ int vpkg_do_install(vpkg_context *ctx, int argc, char **argv)
                 fprintf(stderr, "%s: Already installed.\n", argv[i]);
                 continue;
             }
+        }
+
+        if (it->second.resolve_url(NULL) != 0) {
+            fprintf(stderr, "%s: Unable to resolve URL.\n", argv[i]);
+            continue;
         }
 
         to_install.push_back(it);

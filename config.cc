@@ -13,7 +13,7 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
     std::string_view key = std::string_view{k_, kl_};
     std::string_view value = std::string_view{v_, vl_};
 
-    auto [iterator, _] = user->insert(std::pair<std::string_view, vpkg_config_entry>{section, {}});
+    auto [iterator, _] = user->insert(std::pair<std::string_view, vpkg::package>{section, {}});
 
     if (key == "url") {
         iterator->second.url = value;

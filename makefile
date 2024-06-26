@@ -1,8 +1,8 @@
 CC = gcc
-CC_FLAGS = -Wall -march=native -Og -ggdb
+CC_FLAGS = -I include -Wall -march=native -Og -ggdb
 
 CXX = g++
-CXX_FLAGS = -Wall -march=native -Og -ggdb -fpermissive -std=c++17
+CXX_FLAGS = -I include -I simdjson/singleheader/ -Wall -march=native -Og -ggdb -fpermissive -std=c++17
 
 LD_FLAGS = -lcurl -lxbps -larchive
 
@@ -13,8 +13,10 @@ OBJ += util.o
 OBJ += config.o
 OBJ += update.o
 OBJ += install.o
+OBJ += package.o
 OBJ += repodata.o
 OBJ += simdini/ini.o
+OBJ += simdjson/singleheader/simdjson.o
 
 DEP = $(OBJ:%.o=%.d)
 
@@ -33,6 +35,9 @@ $(BIN): $(OBJ)
 %.o: %.cc
 	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
 
+%.o: %.cpp
+	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
+
 %.o: makefile
 
--include "$(DEP)"
+-include $(DEP)

@@ -15,6 +15,7 @@
 #include <string>
 
 #include "install.hh"
+#include "version.hh"
 #include "repodata.h"
 
 struct vpkg_check_update_cb_data {
@@ -22,27 +23,6 @@ struct vpkg_check_update_cb_data {
     sem_t sem_data;
     std::vector<vpkg_config::iterator> packages_to_update;
 };
-
-time_t get_last_modified(const char *url)
-{
-    long filetime = 0;
-    CURLcode code = CURLE_OK;
-    CURL *curl = curl_easy_init();
-
-    if (curl == NULL) {
-        return (time_t)(-1);
-    }
-
-    code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_URL, url) : code;
-    code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) : code;
-    code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_NOBODY, 1L) : code;
-    code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_FILETIME, 1L) : code;
-    code = (code == CURLE_OK) ? curl_easy_perform(curl) : code;
-    code = (code == CURLE_OK) ? curl_easy_getinfo(curl, CURLINFO_FILETIME, &filetime) : code;
-
-    curl_easy_cleanup(curl);
-    return (code == CURLE_OK) ? (time_t)filetime : (time_t)(-1);
-}
 
 static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *user_, bool *)
 {
@@ -70,16 +50,15 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    /*
-    for (auto &it : user->ctx->config) {
-        fprintf(stderr, "%.*s\n", it.first.size(), it.first.data());
-    }
-    */
-
     // If not in config
     auto it = user->ctx->config.find(pkgname);
     if (it == user->ctx->config.end()) {
         return 0;
+    }
+
+    std::string url;
+    if (it->second.resolve_url(user->ctx->force_modified_since ? NULL : &last_modified) == -1) {
+        return -1;
     }
 
     if (user->ctx->force_modified_since) {
@@ -92,12 +71,6 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
     next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
     if (next == NULL || *next != '\0' || next == install_date) {
         fprintf(stderr, "%s: failed to parse package install_date\n", pkgname);
-        return 0;
-    }
-
-    last_modified = get_last_modified(std::string{it->second.url}.c_str());
-    if (last_modified == (time_t)-1) {
-        fprintf(stderr, "Error while making request\n");
         return 0;
     }
 
