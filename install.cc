@@ -140,6 +140,7 @@ static void *vpkg_do_update_thread(void *arg_)
         if (length < 0) {
             // @todo: Handle this
             *arg->threads_done += 1;
+            *arg->anyerr = true;
             sem_post(arg->sem_notify);
             return NULL;
         }
@@ -151,6 +152,7 @@ static void *vpkg_do_update_thread(void *arg_)
         if (mkdir(buf, 0644) < 0) {
             // @todo: Handle this
             *arg->threads_done += 1;
+            *arg->anyerr = true;
             sem_post(arg->sem_notify);
             return NULL;
         }
