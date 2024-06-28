@@ -3,59 +3,21 @@
 import multiprocessing
 import dataclasses
 import threading
-import datetime
 import requests
 import platform
 import pathlib
 import tomllib
 import fnmatch
 import dacite
-import typing
-import queue
 import time
 import zlib
-import json
 import sys
 
 import urllib.parse
 
-@dataclasses.dataclass
-class PackageSpecification():
-    url: typing.Optional[str]
-    name: typing.Optional[str]
-    not_deps: typing.Optional[list[str]]
-    version: typing.Optional[str]
-    last_modified: typing.Optional[str|datetime.datetime]
-    deps: typing.Optional[list[str]]
+from datetime import datetime
+from typing import Optional
 
-@dataclasses.dataclass
-class GithubAsset():
-    name: str
-    updated_at: str
-    browser_download_url: str
-
-@dataclasses.dataclass
-class GithubSource(PackageSpecification):
-    repository: str
-    pattern: str
-
-@dataclasses.dataclass
-class DebianSource():
-    base_url: str
-    distribution: str
-    components: list[str]
-    packages: typing.Optional[dict[str, PackageSpecification]]
-    whitelist: typing.Optional[list[str]]
-    blacklist: typing.Optional[list[str]]
-
-@dataclasses.dataclass
-class GithubRelease():
-    assets: list[GithubAsset]
-
-@dataclasses.dataclass
-class Config():
-    github_token: typing.Optional[str]
-    sources: typing.Optional[dict[str, DebianSource|GithubSource|PackageSpecification]]
 
 machine = platform.machine()
 match machine:
@@ -65,17 +27,65 @@ match machine:
 # @todo: Don't output in critical section. Use queue.
 output_lock = threading.Lock()
 
-p = tomllib.load(open("vpkg-sync.toml", "rb"))
-config = dacite.from_dict(data_class=Config, data=p)
+
+@dataclasses.dataclass
+class PackageSpec():
+    url: Optional[str]
+    name: Optional[str]
+    not_deps: Optional[list[str]]
+    version: Optional[str]
+    last_modified: Optional[str | datetime]
+    deps: Optional[list[str]]
+
+
+@dataclasses.dataclass
+class GithubAsset():
+    name: str
+    updated_at: str
+    browser_download_url: str
+
+
+@dataclasses.dataclass
+class GithubSource(PackageSpec):
+    repository: str
+    pattern: str
+
+
+@dataclasses.dataclass
+class DebianSource():
+    base_url: str
+    distribution: str
+    components: list[str]
+    packages: Optional[dict[str, PackageSpec]]
+    whitelist: Optional[list[str]]
+    blacklist: Optional[list[str]]
+
+
+@dataclasses.dataclass
+class GithubRelease():
+    assets: list[GithubAsset]
+
+
+@dataclasses.dataclass
+class Config():
+    github_token: Optional[str]
+    sources: Optional[dict[str, DebianSource | GithubSource | PackageSpec]]
+
 
 def parse_debian_package(string: bytes | str):
     if isinstance(string, bytes):
         string = string.decode()
 
     assert isinstance(string, str)
-    return [dict([em.split(": ", 1) for em in p.split("\n") if not em[0].isspace()]) for p in string.split("\n\n") if len(p) > 0]
+    o = [dict([e.split(": ", 1) for e in p.split("\n") if not e[0].isspace()])
+         for p in string.split("\n\n") if len(p) > 0]
 
-def print_package(p: PackageSpecification):
+    return o
+
+
+def print_package(p: PackageSpec):
+    global output_lock
+
     with output_lock:
         print(f"[{p.name}]")
 
@@ -92,24 +102,40 @@ def print_package(p: PackageSpecification):
             print(f"version = {p.version}")
 
         if p.last_modified is not None:
-            assert isinstance(p.last_modified, datetime.datetime)
-            print(f"last_modified = {int(time.mktime(p.last_modified.timetuple()))}")
+            assert isinstance(p.last_modified, datetime)
+
+            last_modified_unix = int(time.mktime(p.last_modified.timetuple()))
+            print(f"last_modified = {last_modified_unix}")
 
         print()
 
+
 def process_single_source(name, source):
+    global machine
     print(f"Syncing {name}", file=sys.stderr)
 
     if isinstance(source, DebianSource):
         parts = urllib.parse.urlparse(source.base_url)
-        distribution_path = pathlib.Path(parts.path if parts.path else "/")/source.distribution
-        package_path = distribution_path/"dists"/'/'.join(source.components)/f"binary-{machine}"/"Packages.gz"
+        base_path = pathlib.Path(parts.path if parts.path else "/")
+        distribution_path = base_path/source.distribution
+        component_path = distribution_path/"dists"/'/'.join(source.components)
+        package_path = component_path/f"binary-{machine}"/"Packages.gz"
 
-        package_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, package_path.as_posix(), "", "", ""))
+        package_url = urllib.parse.urlunparse((parts.scheme,
+                                               parts.netloc,
+                                               package_path.as_posix(),
+                                               "",
+                                               "",
+                                               ""))
         response = requests.get(package_url)
         if response.status_code != 200:
             package_path = package_path.parent/"Packages"
-            package_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, package_path.as_posix(), "", "", ""))
+            package_url = urllib.parse.urlunparse((parts.scheme,
+                                                   parts.netloc,
+                                                   package_path.as_posix(),
+                                                   "",
+                                                   "",
+                                                   ""))
 
             response = requests.get(package_url)
             if response.status_code != 200:
@@ -130,19 +156,35 @@ def process_single_source(name, source):
             packages = source.packages if source.packages is not None else {}
 
             binary_path = distribution_path/v["Filename"]
-            binary_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, binary_path.as_posix(), "", "", ""))
+            binary_url = urllib.parse.urlunparse((parts.scheme,
+                                                  parts.netloc,
+                                                  binary_path.as_posix(),
+                                                  "",
+                                                  "",
+                                                  ""))
 
-            p = packages.setdefault(k, PackageSpecification(name=None, not_deps=None, deps=None, url=None, last_modified=None, version=None))
+            p = packages.setdefault(k, PackageSpec(name=None,
+                                                   not_deps=None,
+                                                   deps=None,
+                                                   url=None,
+                                                   last_modified=None,
+                                                   version=None))
             p.name = p.name if p.name is not None else k
             p.url = p.url if p.url is not None else binary_url
             p.version = p.version if p.version is not None else v["Version"]
             print_package(p)
     elif isinstance(source, GithubSource):
         path = pathlib.Path("/")/"repos"/source.repository/"releases"/"latest"
-        url = urllib.parse.urlunparse(("https", "api.github.com", path.as_posix(), "", "", ""))
+        url = urllib.parse.urlunparse(("https",
+                                       "api.github.com",
+                                       path.as_posix(),
+                                       "",
+                                       "",
+                                       ""))
 
         response = requests.get(url)
-        release = dacite.from_dict(data_class=GithubRelease, data=response.json())
+        release = dacite.from_dict(data_class=GithubRelease,
+                                   data=response.json())
 
         asset = None
         for asset_ in release.assets:
@@ -151,38 +193,64 @@ def process_single_source(name, source):
 
         assert asset is not None
 
-        t = datetime.datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
+        t = datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
 
-        source.name = source.name if source.name is not None else name
-        source.url = source.url if source.url is not None else asset.browser_download_url
-        source.last_modified = source.last_modified if source.last_modified is not None else t
+        if source.name is None:
+            source.name = name
+
+        if source.url is None:
+            source.url = asset.browser_download_url
+
+        if source.last_modified is None:
+            source.last_modified = t
+
         print_package(source)
-    elif isinstance(source, PackageSpecification):
+    elif isinstance(source, PackageSpec):
+        if source.url is None:
+            print(f"{name}: No URL, skipping.", file=sys.stderr)
+            return
+
         response = requests.head(source.url, allow_redirects=True)
-        t = datetime.datetime.strptime(response.headers["last-modified"], "%a, %d %b %Y %H:%M:%S %Z")
+        t = datetime.strptime(response.headers["last-modified"],
+                              "%a, %d %b %Y %H:%M:%S %Z")
 
-        source.name = source.name if source.name is not None else name
-        source.last_modified = source.last_modified if source.last_modified is not None else t
+        if source.name is None:
+            source.name = name
+
+        if source.last_modified is None:
+            source.last_modified = t
+
         print_package(source)
+
 
 def thread_fn(begin, length):
+    assert config.sources is not None
+
     for name, source in list(config.sources.items())[begin:begin+length]:
         process_single_source(name, source)
 
-try:
-    numthreads = multiprocessing.cpu_count()
-except:
-    numthreads = 1
 
-numitems = len(config.sources)
-if numthreads > numitems:
-    numthreads = numitems
+if __name__ == '__main__':
+    p = tomllib.load(open("vpkg-sync.toml", "rb"))
+    config = dacite.from_dict(data_class=Config, data=p)
 
-if numthreads == 1:
-    for name, source in config.sources.items():
-        process_single_source(name, source)
-else:
-    for i in range(0, numthreads):
-        size = (numitems + (numthreads - 1)) // numthreads
-        t = threading.Thread(target=thread_fn, args=(i*size, size))
-        t.start()
+    if config.sources is None:
+        exit(0)
+
+    try:
+        numthreads = multiprocessing.cpu_count()
+    except NotImplementedError:
+        numthreads = 1
+
+    numitems = len(config.sources)
+    if numthreads > numitems:
+        numthreads = numitems
+
+    if numthreads == 1:
+        for name, source in config.sources.items():
+            process_single_source(name, source)
+    else:
+        for i in range(0, numthreads):
+            size = (numitems + (numthreads - 1)) // numthreads
+            t = threading.Thread(target=thread_fn, args=(i*size, size))
+            t.start()
