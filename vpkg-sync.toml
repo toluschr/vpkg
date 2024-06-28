@@ -1,7 +1,6 @@
-# configure packages
-# [packages.discord]
-# url = "https://discord.com/api/download?platform=linux&format=deb"
-# 
+[sources.discord]
+url = "https://discord.com/api/download?platform=linux&format=deb"
+
 # [packages.code]
 # url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 # 
