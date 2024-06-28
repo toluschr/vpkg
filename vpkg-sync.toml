@@ -1,9 +1,9 @@
+[sources.code]
+url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
+
 [sources.discord]
 url = "https://discord.com/api/download?platform=linux&format=deb"
 
-# [packages.code]
-# url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
-# 
 # [packages.gitkraken]
 # not_deps = "musl"
 # url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
