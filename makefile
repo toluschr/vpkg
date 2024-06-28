@@ -11,11 +11,12 @@ BIN = vpkg
 OBJ += vpkg.o
 OBJ += util.o
 OBJ += config.o
-OBJ += update.o
-OBJ += install.o
 OBJ += repodata.o
 OBJ += simdini/ini.o
-# OBJ += simdjson/singleheader/simdjson.o
+
+OBJ += list.o
+OBJ += update.o
+OBJ += install.o
 
 DEP = $(OBJ:%.o=%.d)
 

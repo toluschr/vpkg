@@ -40,44 +40,6 @@ static void usage(int code)
     exit(code);
 }
 
-static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *, bool *)
-{
-    const char *pkgname;
-    xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
-
-    assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
-
-    if (!is_xdeb(dict)) {
-        return 0;
-    }
-
-    if (!xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname)) {
-        return 0;
-    }
-
-    printf("%s\n", pkgname);
-    return 0;
-}
-
-static bool vpkg_do_list(struct vpkg::vpkg *ctx)
-{
-    if (ctx->repository) {
-        for (auto &e : ctx->config) {
-            std::string name{e.first};
-
-            xbps_dictionary_t dict = xbps_pkgdb_get_pkg(&ctx->xbps_handle, name.c_str());
-            if (dict == NULL) {
-                fprintf(stdout, "%s\n", name.c_str());
-            } else {
-                fprintf(stdout, "%s*\n", name.c_str());
-            }
-        }
-        return true;
-    } else {
-        return xbps_pkgdb_foreach_cb(&ctx->xbps_handle, vpkg_list_cb, NULL) == 0;
-    }
-}
-
 int main(int argc, char **argv)
 {
     const char *config_path = nullptr;
@@ -166,7 +128,7 @@ int main(int argc, char **argv)
     }
 
     if (strcmp(argv[0], "list") == 0) {
-        rc = vpkg_do_list(&ctx) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = ctx.cmd_list(argc - 1, &argv[1]);
     } else if (strcmp(argv[0], "update") == 0) {
         if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
             xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));
