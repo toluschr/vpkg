@@ -571,7 +571,7 @@ int vpkg::vpkg::cmd_install(int argc, char **argv)
 {
     if (argc == 0) {
         fprintf(stderr, "usage: vpkg install <package...>\n");
-        return -1;
+        return EXIT_FAILURE;
     }
 
     std::vector<::vpkg::config::iterator> to_install;
@@ -597,7 +597,7 @@ int vpkg::vpkg::cmd_install(int argc, char **argv)
     add_full_deptree(this, &to_install);
 
     if (to_install.size() == 0) {
-        return -1;
+        return EXIT_FAILURE;
     }
 
     return ::vpkg::download_and_install_multi(&this->xbps_handle, to_install, argc, this->force_install, false);

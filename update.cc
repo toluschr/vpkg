@@ -115,7 +115,7 @@ int vpkg::vpkg::cmd_update(int argc, char **argv)
 {
     if (argc != 0) {
         fprintf(stderr, "usage: vpkg update\n");
-        return -1;
+        return EXIT_FAILURE;
     }
 
     vpkg_check_update_cb_data d;
@@ -123,18 +123,18 @@ int vpkg::vpkg::cmd_update(int argc, char **argv)
 
     if ((errno = sem_init(&d.sem_data, 0, 1)) != 0) {
         perror("sem_init failed");
-        return -1;
+        return EXIT_FAILURE;
     }
 
     // @todo: Filter inside threads aswell.
     if ((errno = xbps_pkgdb_foreach_cb_multi(&this->xbps_handle, vpkg_check_update_cb, &d)) != 0) {
         fprintf(stderr, "xbps_pkgdb_foreach_cb_multi failed\n");
-        return -1;
+        return EXIT_FAILURE;
     }
 
     if (d.packages_to_update.size() == 0) {
         fprintf(stderr, "Nothing to do.\n");
-        return -1;
+        return EXIT_FAILURE;
     }
 
     return ::vpkg::download_and_install_multi(&this->xbps_handle, d.packages_to_update, d.packages_to_update.size(), this->force_install, true);

@@ -135,14 +135,14 @@ int main(int argc, char **argv)
             goto end_xbps;
         }
 
-        rc = (ctx.cmd_update(argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = ctx.cmd_update(argc - 1, &argv[1]);
     } else if (strcmp(argv[0], "install") == 0) {
         if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
             xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));
             goto end_xbps;
         }
 
-        rc = (ctx.cmd_install(argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = ctx.cmd_install(argc - 1, &argv[1]);
     } else {
         usage(EXIT_FAILURE);
     }
