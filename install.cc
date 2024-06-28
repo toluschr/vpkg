@@ -63,8 +63,8 @@ struct vpkg_do_update_thread_data {
 
     size_t start;
     size_t size;
-    int status_offset;
-    int manual_size;
+    size_t status_offset;
+    size_t manual_size;
 
     size_t i;
 };
