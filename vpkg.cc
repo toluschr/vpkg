@@ -24,7 +24,6 @@
 #include "simdini/ini.h"
 #include "update.hh"
 #include "install.hh"
-#include "config.hh"
 #include "util.h"
 
 #include <queue>
@@ -60,7 +59,7 @@ static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *
     return 0;
 }
 
-static bool vpkg_do_list(struct vpkg_context *ctx)
+static bool vpkg_do_list(struct vpkg::vpkg *ctx)
 {
     if (ctx->repository) {
         for (auto &e : ctx->config) {
@@ -82,7 +81,7 @@ static bool vpkg_do_list(struct vpkg_context *ctx)
 int main(int argc, char **argv)
 {
     const char *config_path = nullptr;
-    struct vpkg_context ctx;
+    vpkg::vpkg ctx;
     std::error_code ec;
 
     void *data = nullptr;
@@ -107,10 +106,10 @@ int main(int argc, char **argv)
             ctx.verbose = true;
             break;
         case 'f':
-            ctx.force_modified_since = true;
+            ctx.force_update = true;
             break;
         case 'F':
-            ctx.force_reinstall = true;
+            ctx.force_install = true;
             break;
         default:
             usage(EXIT_FAILURE);
@@ -126,7 +125,7 @@ int main(int argc, char **argv)
     {
         std::string resolved_config_path;
 
-        resolved_config_path = vpkg_config_path(config_path);
+        resolved_config_path = vpkg::config_path(config_path);
         if (resolved_config_path.size() == 0) {
             die("unable to canonicalize config path");
         }
@@ -174,14 +173,14 @@ int main(int argc, char **argv)
             goto end_xbps;
         }
 
-        rc = (vpkg_do_update(&ctx, argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = (ctx.cmd_update(argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     } else if (strcmp(argv[0], "install") == 0) {
         if ((rv = xbps_pkgdb_lock(&ctx.xbps_handle)) != 0) {
             xbps_error_printf("failed to lock pkgdb: %s\n", strerror(rv));
             goto end_xbps;
         }
 
-        rc = (vpkg::do_install(&ctx, argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+        rc = (ctx.cmd_install(argc - 1, &argv[1]) == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     } else {
         usage(EXIT_FAILURE);
     }

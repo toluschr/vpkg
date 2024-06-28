@@ -15,13 +15,13 @@
 #include <string>
 
 #include "install.hh"
-#include "version.hh"
 #include "repodata.h"
+#include "util.h"
 
 struct vpkg_check_update_cb_data {
-    vpkg_context *ctx;
+    vpkg::vpkg *ctx;
     sem_t sem_data;
-    std::vector<vpkg_config::iterator> packages_to_update;
+    std::vector<::vpkg::config::iterator> packages_to_update;
 };
 
 static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *user_, bool *)
@@ -58,18 +58,12 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    /*
-    if (it->second.resolve_url(user->ctx->force_modified_since ? NULL : &last_modified) == -1) {
-        return -1;
-    }
-    */
-
-    if (user->ctx->force_modified_since) {
+    if (user->ctx->force_update) {
         goto insert_and_out;
     }
 
     if (it->second.version.size()) {
-        std::string new_version{it->second.version};
+        std::string new_version;
         std::string old_version;
         const char *version = xbps_pkg_version(pkgver);
         const char *revision = xbps_pkg_revision(pkgver);
@@ -79,12 +73,15 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
             return 0;
         }
 
-        old_version = std::string{version, revision - version};
+        assert(revision >= version);
+
+        old_version = std::string{version, (long unsigned int)(revision - version)};
+        new_version = std::string{it->second.version};
 
         if (xbps_cmpver(old_version.c_str(), new_version.c_str()) <= 0) {
             return 0;
         }
-    } else {
+    } else if (it->second.last_modified != 0) {
         struct tm t;
 
         // Parse timestamp
@@ -99,6 +96,9 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         if (it->second.last_modified <= mktime(&t)) {
             return 0;
         }
+    } else {
+        fprintf(stderr, "%s: Neither version nor last_modified set. Will never update.\n", pkgname);
+        return 0;
     }
 
 insert_and_out:
@@ -111,7 +111,7 @@ insert_and_out:
 }
 
 
-int vpkg_do_update(vpkg_context *ctx, int argc, char **argv)
+int vpkg::vpkg::cmd_update(int argc, char **argv)
 {
     if (argc != 0) {
         fprintf(stderr, "usage: vpkg update\n");
@@ -119,7 +119,7 @@ int vpkg_do_update(vpkg_context *ctx, int argc, char **argv)
     }
 
     vpkg_check_update_cb_data d;
-    d.ctx = ctx;
+    d.ctx = this;
 
     if ((errno = sem_init(&d.sem_data, 0, 1)) != 0) {
         perror("sem_init failed");
@@ -127,7 +127,7 @@ int vpkg_do_update(vpkg_context *ctx, int argc, char **argv)
     }
 
     // @todo: Filter inside threads aswell.
-    if ((errno = xbps_pkgdb_foreach_cb_multi(&ctx->xbps_handle, vpkg_check_update_cb, &d)) != 0) {
+    if ((errno = xbps_pkgdb_foreach_cb_multi(&this->xbps_handle, vpkg_check_update_cb, &d)) != 0) {
         fprintf(stderr, "xbps_pkgdb_foreach_cb_multi failed\n");
         return -1;
     }
@@ -137,5 +137,5 @@ int vpkg_do_update(vpkg_context *ctx, int argc, char **argv)
         return -1;
     }
 
-    return vpkg::download_and_install_multi(&ctx->xbps_handle, d.packages_to_update, d.packages_to_update.size(), ctx->force_reinstall, true);
+    return ::vpkg::download_and_install_multi(&this->xbps_handle, d.packages_to_update, d.packages_to_update.size(), this->force_install, true);
 }

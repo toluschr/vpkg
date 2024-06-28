@@ -13,7 +13,6 @@ OBJ += util.o
 OBJ += config.o
 OBJ += update.o
 OBJ += install.o
-OBJ += package.o
 OBJ += repodata.o
 OBJ += simdini/ini.o
 OBJ += simdjson/singleheader/simdjson.o

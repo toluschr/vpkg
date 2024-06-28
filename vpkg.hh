@@ -11,7 +11,28 @@
 
 #include "package.hh"
 
-typedef std::map<std::string_view, vpkg::package> vpkg_config;
+namespace vpkg {
+using config = typename std::map<std::string_view, vpkg::package>;
+
+struct vpkg {
+    bool verbose;
+    bool repository;
+    bool force_update;
+    bool force_install;
+    ::vpkg::config config;
+    ::xbps_handle xbps_handle;
+
+    int cmd_list(int argc, char **argv);
+    int cmd_update(int argc, char **argv);
+    int cmd_install(int argc, char **argv);
+};
+
+/*!
+ * @return Empty string on error, set errno
+ * @return Config path on success
+ */
+std::string config_path(const char *default_value);
+}
 
 // Planned for future removal
 
@@ -23,21 +44,6 @@ typedef std::map<std::string_view, vpkg::package> vpkg_config;
  *
  * @return nonzero if any error occurred, the exact value is currently undefined.
  */
-int vpkg_config_parse(vpkg_config *out, const char *str, size_t len);
-
-/*!
- * @return Empty string on error, set errno
- * @return Config path on success
- */
-std::string vpkg_config_path(const char *default_value);
-
-struct vpkg_context {
-    bool verbose = false;
-    bool repository = false;
-    bool force_modified_since = false;
-    bool force_reinstall = false;
-    vpkg_config config;
-    struct xbps_handle xbps_handle;
-};
+int vpkg_config_parse(::vpkg::config *out, const char *str, size_t len);
 
 #endif // VPKG_CONFIG_HH_

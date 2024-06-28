@@ -18,6 +18,28 @@ bool is_xdeb(xbps_dictionary_t dict)
     return true;
 }
 
+#if 0
+bool is_vpkg(xbps_dictionary_t dict)
+{
+    const char *pkgname;
+
+    if (!is_xbps(dict)) {
+        return false;
+    }
+
+    if (!xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname)) {
+        return false;
+    }
+
+    /*
+    if () {
+    }
+    */
+
+    return true;
+}
+#endif
+
 bool yes_no_prompt(void)
 {
     bool ok;

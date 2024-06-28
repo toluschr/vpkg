@@ -19,9 +19,7 @@
 #include <atomic>
 #include <queue>
 
-#include "config.hh"
-#include "update.hh"
-#include "version.hh"
+#include "vpkg.hh"
 
 #include "repodata.h"
 #include "util.h"
@@ -48,7 +46,7 @@ struct vpkg_status_entry {
 };
 
 struct vpkg_do_update_thread_data {
-    const std::vector<vpkg_config::iterator> *packages_to_update;
+    const std::vector<::vpkg::config::iterator> *packages_to_update;
 
     std::atomic<bool> *anyerr;
     std::atomic<unsigned long> *cur_status_offset;
@@ -312,7 +310,7 @@ static void *vpkg_do_update_thread(void *arg_)
     return NULL;
 }
 
-int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<vpkg_config::iterator> &packages_to_update, int manual_size, bool force_reinstall, bool update)
+int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<::vpkg::config::iterator> &packages_to_update, int manual_size, bool force_install, bool update)
 {
     int rv;
     sem_t sem_notify;
@@ -457,7 +455,7 @@ int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<
         if (update) {
             rv = xbps_transaction_update_pkg(xhp, pkgver);
         } else {
-            rv = xbps_transaction_install_pkg(xhp, pkgver, force_reinstall);
+            rv = xbps_transaction_install_pkg(xhp, pkgver, force_install);
         }
 
         // @todo: free vector
@@ -536,10 +534,9 @@ int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<
     return 0;
 }
 
-static int add_full_deptree(vpkg_context *ctx, std::vector<vpkg_config::iterator> *to_install, int from)
+static int add_full_deptree(vpkg::vpkg *ctx, std::vector<::vpkg::config::iterator> *to_install)
 {
-    size_t size = to_install->size();
-    for (size_t i = from; i < size; i++) {
+    for (size_t i = 0; i < to_install->size(); i++) {
         std::string str{to_install->at(i)->second.deps};
         char *saveptr = NULL;
 
@@ -561,32 +558,34 @@ static int add_full_deptree(vpkg_context *ctx, std::vector<vpkg_config::iterator
         }
     }
 
+    /*
     if (to_install->size() != size) {
-        add_full_deptree(ctx, to_install, size);
+        add_full_deptree(this, to_install, size);
     }
+    */
 
     return 0;
 }
 
-int vpkg::do_install(vpkg_context *ctx, int argc, char **argv)
+int vpkg::vpkg::cmd_install(int argc, char **argv)
 {
     if (argc == 0) {
         fprintf(stderr, "usage: vpkg install <package...>\n");
         return -1;
     }
 
-    std::vector<vpkg_config::iterator> to_install;
+    std::vector<::vpkg::config::iterator> to_install;
     to_install.reserve(argc);
 
     for (int i = 0; i < argc; i++) {
-        auto it = ctx->config.find(argv[i]);
-        if (it == ctx->config.end()) {
+        auto it = this->config.find(argv[i]);
+        if (it == this->config.end()) {
             fprintf(stderr, "package %s not found\n", argv[i]);
             continue;
         }
 
-        if (!ctx->force_reinstall) {
-            if (xbps_dictionary_get(ctx->xbps_handle.pkgdb, argv[i])) {
+        if (!this->force_install) {
+            if (xbps_dictionary_get(this->xbps_handle.pkgdb, argv[i])) {
                 fprintf(stderr, "%s: Already installed.\n", argv[i]);
                 continue;
             }
@@ -595,11 +594,11 @@ int vpkg::do_install(vpkg_context *ctx, int argc, char **argv)
         to_install.push_back(it);
     }
 
-    add_full_deptree(ctx, &to_install, 0);
+    add_full_deptree(this, &to_install);
 
     if (to_install.size() == 0) {
         return -1;
     }
 
-    return vpkg::download_and_install_multi(&ctx->xbps_handle, to_install, argc, ctx->force_reinstall, false);
+    return ::vpkg::download_and_install_multi(&this->xbps_handle, to_install, argc, this->force_install, false);
 }

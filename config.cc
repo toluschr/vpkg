@@ -1,4 +1,4 @@
-#include "config.hh"
+#include "vpkg.hh"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 
 static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t kl_, const char *v_, size_t vl_, void *user_)
 {
-    vpkg_config *user = static_cast<vpkg_config *>(user_);
+    ::vpkg::config *user = static_cast<::vpkg::config *>(user_);
     std::string_view section = s_ ? std::string_view{s_, sl_} : std::string_view{""};
     std::string_view key = std::string_view{k_, kl_};
     std::string_view value = std::string_view{v_, vl_};
@@ -32,11 +32,13 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
 
             unsigned long last_modified = strtoul(value.data(), &end, 10);
             if (errno != eno || *end != '\n' || end == value.data()) {
+                fprintf(stderr, "unable to parse timestamp\n");
                 return 1;
             }
 
             iterator->second.last_modified = (time_t)last_modified;
         } else {
+            fprintf(stderr, "invalid key: %.*s\n", (int)key.size(), key.data());
             return 1;
         }
     } else {
@@ -47,7 +49,7 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
     return 0;
 }
 
-int vpkg_config_parse(vpkg_config *out, const char *str, size_t len)
+int vpkg_config_parse(::vpkg::config *out, const char *str, size_t len)
 {
     if (!ini_parse_string(static_cast<const char *>(str), len, cb_ini_vpkg_config, out)) {
         return 1;
@@ -63,7 +65,7 @@ int vpkg_config_parse(vpkg_config *out, const char *str, size_t len)
     return 0;
 }
 
-std::string vpkg_config_path(const char *default_value)
+std::string vpkg::config_path(const char *default_value)
 {
     std::string config_home;
 
