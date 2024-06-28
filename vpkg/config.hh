@@ -9,32 +9,23 @@
 
 #include <stddef.h>
 
-#include "package.hh"
-
 namespace vpkg {
-using config = typename std::map<std::string_view, vpkg::package>;
-
-struct vpkg {
-    bool verbose = false;
-    bool repository = false;
-    bool force_update = false;
-    bool force_install = false;
-    ::vpkg::config config;
-    ::xbps_handle xbps_handle;
-
-    int cmd_list(int argc, char **argv) noexcept;
-    int cmd_update(int argc, char **argv) noexcept;
-    int cmd_install(int argc, char **argv) noexcept;
+struct package {
+    std::string_view url;
+    std::string_view name;
+    std::string_view deps;
+    std::string_view version;
+    std::string_view not_deps;
+    time_t last_modified;
 };
+
+using config = typename std::map<std::string_view, vpkg::package>;
 
 /*!
  * @return Empty string on error, set errno
  * @return Config path on success
  */
 std::string config_path(const char *default_value);
-}
-
-// Planned for future removal
 
 /*!
  * @param[in] str A non-nullterminated string, that will be parsed as ini.
@@ -44,6 +35,7 @@ std::string config_path(const char *default_value);
  *
  * @return nonzero if any error occurred, the exact value is currently undefined.
  */
-int vpkg_config_parse(::vpkg::config *out, const char *str, size_t len);
+int parse_config(::vpkg::config *out, const char *str, size_t len);
+}
 
 #endif // VPKG_CONFIG_HH_

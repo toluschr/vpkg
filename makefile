@@ -6,28 +6,38 @@ CXX_FLAGS = -I. -Wall -march=native -Og -ggdb -fpermissive -std=c++17
 
 LD_FLAGS = -lcurl -lxbps -larchive
 
-BIN = vpkg/vpkg
+OBJ += vpkg-install/repodata.o
+OBJ += vpkg-install/vpkg-install.o
 
-OBJ += vpkg/vpkg.o
-OBJ += vpkg/util.o
+OBJ += vpkg-query/vpkg-query.o
+
 OBJ += vpkg/config.o
-OBJ += vpkg/repodata.o
-OBJ += simdini/ini.o
+OBJ += vpkg/util.o
 
-OBJ += vpkg/list.o
-OBJ += vpkg/update.o
-OBJ += vpkg/install.o
+OBJ += simdini/ini.o
 
 DEP = $(OBJ:%.o=%.d)
 
 .PHONY: all, clean
-all: $(BIN)
+all: vpkg-install/vpkg-install vpkg-query/vpkg-query
+
+vpkg-install/vpkg-install: \
+	vpkg-install/repodata.o \
+	vpkg-install/vpkg-install.o \
+	simdini/ini.o \
+	vpkg/config.o \
+	vpkg/util.o
+	$(CXX) $(LD_FLAGS) $^ -o $@
+
+vpkg-query/vpkg-query: \
+	vpkg-query/vpkg-query.o \
+	simdini/ini.o \
+	vpkg/config.o \
+	vpkg/util.o
+	$(CXX) $(LD_FLAGS) $^ -o $@
 
 clean:
-	-rm -f $(BIN) $(OBJ) $(DEP)
-
-$(BIN): $(OBJ)
-	$(CXX) $(LD_FLAGS) $^ -o $@
+	-rm -f $(OBJ) $(DEP)
 
 %.o: %.c
 	$(CC) $(CC_FLAGS) -c -MMD $< -o $@

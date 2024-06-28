@@ -1,4 +1,4 @@
-#include "vpkg.hh"
+#include "vpkg/config.hh"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -49,7 +49,7 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
     return 0;
 }
 
-int vpkg_config_parse(::vpkg::config *out, const char *str, size_t len)
+int vpkg::parse_config(::vpkg::config *out, const char *str, size_t len)
 {
     if (!ini_parse_string(static_cast<const char *>(str), len, cb_ini_vpkg_config, out)) {
         return 1;

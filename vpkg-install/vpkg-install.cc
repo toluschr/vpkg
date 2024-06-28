@@ -1,28 +1,57 @@
-#include "install.hh"
-
-#include <algorithm>
-#include <string>
-#include <vector>
-
-#include <semaphore.h>
-#include <pthread.h>
-
-#include <curl/curl.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
 #include <sys/wait.h>
-#include <assert.h>
+
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <pwd.h>
+
+#include <filesystem>
+#include <algorithm>
+#include <string>
+#include <limits>
+#include <map>
+
+#include <curl/curl.h>
+#include <semaphore.h>
+#include <pthread.h>
+#include <math.h>
 #include <xbps.h>
+
+#include "simdini/ini.h"
+
+#include "vpkg-install/repodata.h"
+#include "vpkg/config.hh"
+#include "vpkg/util.hh"
 
 #include <atomic>
 #include <queue>
 
-#include "vpkg.hh"
+static bool force = false;
+static bool update = false;
+static bool verbose = false;
 
-#include "repodata.h"
-#include "util.h"
+static void die(const char *message)
+{
+    perror(message);
+    exit(EXIT_FAILURE);
+}
+
+static void usage(int code)
+{
+    fprintf(stderr, "usage: vpkg [-vfRu] [-c <config_path>]\n");
+    exit(code);
+}
+
+struct vpkg_check_update_cb_data {
+    vpkg::config *config;
+    sem_t sem_data;
+    std::vector<::vpkg::config::iterator> *packages_to_update;
+};
 
 struct vpkg_status_entry {
     vpkg_status_entry() = delete;
@@ -56,10 +85,10 @@ struct vpkg_do_update_thread_data {
 
     std::vector<char *> *register_xbps;
     std::vector<char *> *install_xbps;
-    sem_t *sem_continue;
 
     sem_t *sem_data;
     sem_t *sem_notify;
+    sem_t *sem_continue;
 
     size_t start;
     size_t size;
@@ -68,6 +97,39 @@ struct vpkg_do_update_thread_data {
 
     size_t i;
 };
+
+static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *user_, bool *)
+{
+    const char *pkgname;
+    xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(obj);
+    vpkg_check_update_cb_data *user = static_cast<vpkg_check_update_cb_data *>(user_);
+
+    assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
+
+    if (!is_xdeb(xpkg)) {
+        return 0;
+    }
+
+    if (!xbps_dictionary_get_cstring_nocopy(xpkg, "pkgname", &pkgname)) {
+        return 0;
+    }
+
+    auto it = user->config->find(pkgname);
+    if (it == user->config->end()) {
+        return 0;
+    }
+
+    if (!force && xbps_vpkg_gtver(xpkg, &it->second) != 1) {
+        return 0;
+    }
+
+    // @todo: Handle EINTR
+    sem_wait(&user->sem_data);
+    user->packages_to_update->push_back(it);
+    sem_post(&user->sem_data);
+
+    return 0;
+}
 
 static int progressfn(void *arg_, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
 {
@@ -310,7 +372,7 @@ static void *vpkg_do_update_thread(void *arg_)
     return NULL;
 }
 
-int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<::vpkg::config::iterator> &packages_to_update, int manual_size, bool force_install, bool update)
+static int download_and_install_multi(struct xbps_handle *xhp, const std::vector<::vpkg::config::iterator> &packages_to_update, int manual_size, bool force_install, bool update)
 {
     int rv;
     sem_t sem_notify;
@@ -385,6 +447,7 @@ int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<
         }
     }
 
+    unsigned long max_offset = 0;
     unsigned long last_offset = 0;
     while (threads_done < i) {
         sem_wait(&sem_notify);
@@ -413,6 +476,9 @@ int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<
 
             fprintf(stderr, "\r\033[K%.*s %g %%", (int)temp_entry.name.size(), temp_entry.name.data(), progress);
             fflush(stderr);
+
+            if (max_offset < temp_entry.offset)
+                max_offset = temp_entry.offset;
 
             last_offset = temp_entry.offset;
         }
@@ -472,7 +538,7 @@ int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<
         case 0:
             break;
         default:
-            fprintf(stderr, "%s: Unespected error: %d\n", pkgver, rv);
+            fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
             xbps_object_release(binpkgd);
             return -1;
         }
@@ -534,7 +600,7 @@ int vpkg::download_and_install_multi(struct xbps_handle *xhp, const std::vector<
     return 0;
 }
 
-static int add_full_deptree(vpkg::vpkg *ctx, std::vector<::vpkg::config::iterator> *to_install)
+static int add_full_deptree(struct xbps_handle *xhp, vpkg::config *config, std::vector<::vpkg::config::iterator> *to_install)
 {
     for (size_t i = 0; i < to_install->size(); i++) {
         std::string str{to_install->at(i)->second.deps};
@@ -545,61 +611,180 @@ static int add_full_deptree(vpkg::vpkg *ctx, std::vector<::vpkg::config::iterato
 
             if (!xbps_pkgpattern_name(buf, sizeof(buf), tok)) {
                 fprintf(stderr, "Invalid dependency: %s\n", tok);
-                return -1;
+                return EINVAL;
             }
 
-            if (xbps_dictionary_get(ctx->xbps_handle.pkgdb, buf)) {
+            auto dep_it = config->find(buf);
+            if (dep_it == config->end()) {
                 continue;
             }
 
-            auto dep_it = ctx->config.find(buf);
-            if (dep_it != ctx->config.end() && std::find(to_install->begin(), to_install->end(), dep_it) == to_install->end()) {
+            xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(xhp->pkgdb, buf));
+            if (xpkg != NULL && xbps_vpkg_gtver(xpkg, &dep_it->second) != 1) {
+                continue;
+            }
+
+            if (std::find(to_install->begin(), to_install->end(), dep_it) == to_install->end()) {
                 to_install->push_back(dep_it);
             }
         }
     }
 
-    /*
-    if (to_install->size() != size) {
-        add_full_deptree(this, to_install, size);
-    }
-    */
-
     return 0;
 }
 
-int vpkg::vpkg::cmd_install(int argc, char **argv) noexcept
+int main(int argc, char **argv)
 {
-    if (argc == 0) {
-        fprintf(stderr, "usage: vpkg install <package...>\n");
-        return EXIT_FAILURE;
+    const char *config_path = nullptr;
+    vpkg::config config;
+    xbps_handle xh;
+    std::error_code ec;
+    std::vector<::vpkg::config::iterator> to_install;
+
+    void *data = nullptr;
+    int rv = EXIT_FAILURE;
+    struct stat st;
+    int config_fd;
+    int opt;
+
+    memset(&xh, 0, sizeof(xh));
+    curl_global_init(CURL_GLOBAL_ALL);
+
+    while ((opt = getopt(argc, argv, ":c:vfu")) != -1) {
+        switch (opt) {
+        case 'u':
+            update = true;
+            break;
+        case 'c':
+            config_path = optarg;
+            break;
+        case 'v':
+            verbose = true;
+            break;
+        case 'f':
+            force = true;
+            break;
+        default:
+            usage(EXIT_FAILURE);
+        }
     }
 
-    std::vector<::vpkg::config::iterator> to_install;
-    to_install.reserve(argc);
+    argc -= optind, argv += optind;
 
-    for (int i = 0; i < argc; i++) {
-        auto it = this->config.find(argv[i]);
-        if (it == this->config.end()) {
-            fprintf(stderr, "package %s not found\n", argv[i]);
-            continue;
+    {
+        std::string resolved_config_path;
+
+        resolved_config_path = vpkg::config_path(config_path);
+        if (resolved_config_path.size() == 0) {
+            die("unable to canonicalize config path");
         }
 
-        if (!this->force_install) {
-            if (xbps_dictionary_get(this->xbps_handle.pkgdb, argv[i])) {
-                fprintf(stderr, "%s: Already installed.\n", argv[i]);
+        config_fd = open(resolved_config_path.c_str(), O_RDONLY);
+    }
+
+    if (config_fd < 0) {
+        die("unable to open config file");
+    }
+
+    if (fstat(config_fd, &st) < 0) {
+        die("unable to stat config file");
+    }
+
+    if (st.st_size != 0) {
+        data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, config_fd, 0);
+        if (data == MAP_FAILED) {
+            die("unable to map config file");
+        }
+
+        if (vpkg::parse_config(&config, static_cast<const char *>(data), st.st_size) != 0) {
+            fprintf(stderr, "unable to parse config file\n");
+            goto end_munmap;
+        }
+    }
+
+    if ((errno = xbps_init(&xh)) != 0) {
+        perror("xbps_init");
+        goto out;
+    }
+
+    if (setenv("XDEB_SHLIBS", VPKG_XDEB_SHLIBS, 1) != 0) {
+        perror("failed to set shlibs env");
+        goto end_xbps_lock;
+    }
+
+    if (mkdir(VPKG_TEMPDIR, 0644) < 0 && errno != EEXIST) {
+        perror("failed to create tempdir");
+        goto end_xbps_lock;
+    }
+
+    if ((errno = xbps_pkgdb_lock(&xh)) != 0) {
+        perror("failed to lock pkgdb");
+        goto end_xbps;
+    }
+
+    if (update && argc == 0) {
+        vpkg_check_update_cb_data cbd;
+        cbd.config = &config;
+        cbd.packages_to_update = &to_install;
+
+        if ((errno = sem_init(&cbd.sem_data, 0, 1)) != 0) {
+            perror("sem_init");
+            goto end_xbps_lock;
+        }
+
+        xbps_pkgdb_foreach_cb_multi(&xh, vpkg_check_update_cb, &cbd);
+    } else if (argc != 0) {
+        to_install.reserve(argc);
+        for (int i = 0; i < argc; i++) {
+            auto it = config.find(argv[i]);
+            if (it == config.end()) {
+                fprintf(stderr, "package %s not found\n", argv[i]);
                 continue;
             }
+
+            if (!force) {
+                auto xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(xh.pkgdb, argv[i]));
+                if (xpkg != NULL && xbps_vpkg_gtver(xpkg, &it->second) != 1) {
+                    continue;
+                }
+            }
+
+            to_install.push_back(it);
         }
-
-        to_install.push_back(it);
-    }
-
-    add_full_deptree(this, &to_install);
-
-    if (to_install.size() == 0) {
+    } else {
+        fprintf(stderr, "usage: vpkg-install <package...>\n");
         return EXIT_FAILURE;
     }
 
-    return ::vpkg::download_and_install_multi(&this->xbps_handle, to_install, argc, this->force_install, false);
+    if ((errno = add_full_deptree(&xh, &config, &to_install)) != 0) {
+        perror("Unable to resolve dependencies\n");
+        goto end_xbps_lock;
+    }
+
+    if (to_install.size() == 0) {
+        fprintf(stderr, "Nothing to do.\n");
+        goto end_xbps_lock;
+    }
+
+    if (::download_and_install_multi(&xh, to_install, argc, force, false) != 0) {
+        ;
+    }
+
+    if (std::filesystem::remove_all(VPKG_TEMPDIR, ec) == static_cast<std::uintmax_t>(-1)) {
+        fprintf(stderr, "failed to cleanup tempdir\n");
+    }
+
+end_xbps_lock:
+end_xbps:
+    xbps_end(&xh);
+
+end_munmap:
+    if (data != NULL) {
+        munmap(data, st.st_size);
+    }
+
+    close(config_fd);
+
+out:
+    return rv;
 }

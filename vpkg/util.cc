@@ -1,5 +1,6 @@
-#include "util.h"
+#include "util.hh"
 
+#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -17,28 +18,6 @@ bool is_xdeb(xbps_dictionary_t dict)
 
     return true;
 }
-
-#if 0
-bool is_vpkg(xbps_dictionary_t dict)
-{
-    const char *pkgname;
-
-    if (!is_xbps(dict)) {
-        return false;
-    }
-
-    if (!xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname)) {
-        return false;
-    }
-
-    /*
-    if () {
-    }
-    */
-
-    return true;
-}
-#endif
 
 bool yes_no_prompt(void)
 {
@@ -59,3 +38,58 @@ bool yes_no_prompt(void)
 
     return ok && !ferror(stdin);
 }
+
+int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
+{
+    const char *pkgver;
+    const char *install_date;
+
+    assert(xpkg != NULL);
+
+    if (!xbps_dictionary_get_cstring_nocopy(xpkg, "install-date", &install_date)) {
+        return -1;
+    }
+
+    if (!xbps_dictionary_get_cstring_nocopy(xpkg, "pkgver", &pkgver)) {
+        return -1;
+    }
+
+    if (vpkg->version.size()) {
+        std::string new_version;
+        std::string old_version;
+        const char *version = xbps_pkg_version(pkgver);
+        const char *revision = xbps_pkg_revision(pkgver);
+
+        if (version == NULL || revision == NULL) {
+            fprintf(stderr, "unable to get version or revision: %s\n", pkgver);
+            return -1;
+        }
+
+        assert(revision >= version);
+
+        old_version = std::string{version, (long unsigned int)(revision - version - 1)};
+        new_version = std::string{vpkg->version};
+
+        return (xbps_cmpver(old_version.c_str(), new_version.c_str()) < 0);
+    }
+
+
+    if (vpkg->last_modified != 0) {
+        char *next;
+        struct tm t;
+
+        // Parse timestamp
+        memset(&t, 0, sizeof(t));
+
+        next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
+        if (next == NULL || *next != '\0' || next == install_date) {
+            fprintf(stderr, "%s: uable to parse install_date '%s'\n", pkgver, install_date);
+            return -1;
+        }
+
+        return (mktime(&t) < vpkg->last_modified);
+    }
+
+    return -1;
+}
+

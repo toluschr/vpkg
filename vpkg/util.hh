@@ -3,9 +3,8 @@
 
 #include <xbps.h>
 
-#define VPKG_TEMPDIR "/tmp/vpkg"
-#define VPKG_BINPKGS "/var/lib/vpkg"
-#define VPKG_XDEB_SHLIBS "/tmp/vpkg/shlibs"
+#include "vpkg/config.hh"
+#include "vpkg/defs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,6 +12,7 @@ extern "C" {
 
 bool is_xdeb(xbps_dictionary_t dict);
 bool yes_no_prompt(void);
+int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg);
 
 #ifdef __cplusplus
 }
