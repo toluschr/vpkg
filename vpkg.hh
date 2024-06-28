@@ -15,10 +15,10 @@ namespace vpkg {
 using config = typename std::map<std::string_view, vpkg::package>;
 
 struct vpkg {
-    bool verbose;
-    bool repository;
-    bool force_update;
-    bool force_install;
+    bool verbose = false;
+    bool repository = false;
+    bool force_update = false;
+    bool force_install = false;
     ::vpkg::config config;
     ::xbps_handle xbps_handle;
 
