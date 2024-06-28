@@ -75,15 +75,27 @@ class Config():
     sources: Optional[dict[str, DebianSource | GithubSource | PackageSpec]]
 
 
-def parse_debian_package(string: bytes | str):
+def parse_debian_package(string: bytes | str) -> list[dict[str, str]]:
     if isinstance(string, bytes):
         string = string.decode()
 
     assert isinstance(string, str)
-    o = [dict([e.split(": ", 1) for e in p.split("\n") if not e[0].isspace()])
-         for p in string.split("\n\n") if len(p) > 0]
 
-    return o
+    packages = list()
+    for package_string in string.split("\n\n"):
+        if len(package_string) == 0: continue
+
+        package = dict()
+        for entry_string in package_string.split("\n"):
+            # skip continutations
+            if entry_string[0].isspace(): continue
+
+            key, value = entry_string.split(": ", 1)
+            package[key] = value
+
+        packages.append(package)
+
+    return packages
 
 
 def print_package(p: PackageSpec):
