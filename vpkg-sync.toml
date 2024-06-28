@@ -5,6 +5,9 @@ pattern = "SceneBuilder-*.deb"
 [sources.code]
 url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 
+[sources.code-insiders]
+url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"
+
 [sources.gitkraken]
 url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
 not_deps = ["musl"]
