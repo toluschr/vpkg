@@ -66,7 +66,7 @@ def parse_debian_package(string: bytes | str):
         string = string.decode()
 
     assert isinstance(string, str)
-    return [dict([em.split(": ") for em in p.split("\n") if not em[0].isspace()]) for p in string.split("\n\n") if len(p) > 0]
+    return [dict([em.split(": ", 1) for em in p.split("\n") if not em[0].isspace()]) for p in string.split("\n\n") if len(p) > 0]
 
 def print_package(p: PackageSpecification):
     print(f"[{p.name}]")
