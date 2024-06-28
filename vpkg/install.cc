@@ -540,8 +540,7 @@ static int add_full_deptree(vpkg::vpkg *ctx, std::vector<::vpkg::config::iterato
         std::string str{to_install->at(i)->second.deps};
         char *saveptr = NULL;
 
-        char *tok = strtok_r(str.data(), " ", &saveptr);
-        while (tok) {
+        for (char *tok = strtok_r(str.data(), " ", &saveptr); tok; tok = strtok_r(NULL, " ", &saveptr)) {
             char buf[to_install->at(i)->second.deps.size() + 1];
 
             if (!xbps_pkgpattern_name(buf, sizeof(buf), tok)) {
@@ -549,12 +548,14 @@ static int add_full_deptree(vpkg::vpkg *ctx, std::vector<::vpkg::config::iterato
                 return -1;
             }
 
+            if (xbps_dictionary_get(ctx->xbps_handle.pkgdb, buf)) {
+                continue;
+            }
+
             auto dep_it = ctx->config.find(buf);
             if (dep_it != ctx->config.end() && std::find(to_install->begin(), to_install->end(), dep_it) == to_install->end()) {
                 to_install->push_back(dep_it);
             }
-
-            tok = strtok_r(NULL, " ", &saveptr);
         }
     }
 
