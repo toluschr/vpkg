@@ -21,6 +21,11 @@ distribution = "debian"
 components = ["bookworm", "main"]
 whitelist = ["massif-visualizer"]
 
+[sources.unity]
+base_url = "https://hub-dist.unity3d.com/artifactory/"
+distribution = "hub-debian-prod-local"
+components = ["stable", "main"]
+
 [sources.obsidian]
 repository = "obsidianmd/obsidian-releases"
 pattern = "obsidian-*-amd64.deb"
