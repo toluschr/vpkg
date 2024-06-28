@@ -18,7 +18,7 @@ import urllib.parse
 class PackageSpecification():
     url: typing.Optional[str]
     name: typing.Optional[str]
-    not_deps: typing.Optional[str]
+    not_deps: typing.Optional[list[str]]
     version: typing.Optional[str]
     last_modified: typing.Optional[str|datetime.datetime]
     deps: typing.Optional[list[str]]
