@@ -23,7 +23,7 @@ static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *
     return 0;
 }
 
-int vpkg::vpkg::cmd_list(int argc, char **argv)
+int vpkg::vpkg::cmd_list(int argc, char **argv) noexcept
 {
     if (this->repository) {
         for (auto &e : this->config) {

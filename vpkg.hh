@@ -22,9 +22,9 @@ struct vpkg {
     ::vpkg::config config;
     ::xbps_handle xbps_handle;
 
-    int cmd_list(int argc, char **argv);
-    int cmd_update(int argc, char **argv);
-    int cmd_install(int argc, char **argv);
+    int cmd_list(int argc, char **argv) noexcept;
+    int cmd_update(int argc, char **argv) noexcept;
+    int cmd_install(int argc, char **argv) noexcept;
 };
 
 /*!

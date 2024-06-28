@@ -111,7 +111,7 @@ insert_and_out:
 }
 
 
-int vpkg::vpkg::cmd_update(int argc, char **argv)
+int vpkg::vpkg::cmd_update(int argc, char **argv) noexcept
 {
     if (argc != 0) {
         fprintf(stderr, "usage: vpkg update\n");

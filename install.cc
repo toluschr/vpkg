@@ -29,7 +29,7 @@ struct vpkg_status_entry {
 
     vpkg_status_entry(const std::string_view &name_, unsigned long offset_,
                       curl_off_t dltotal_, curl_off_t dlnow_,
-                      curl_off_t ultotal_, curl_off_t ulnow_) :
+                      curl_off_t ultotal_, curl_off_t ulnow_) noexcept :
         name{name_},
         offset{offset_},
         dltotal{dltotal_},
@@ -567,7 +567,7 @@ static int add_full_deptree(vpkg::vpkg *ctx, std::vector<::vpkg::config::iterato
     return 0;
 }
 
-int vpkg::vpkg::cmd_install(int argc, char **argv)
+int vpkg::vpkg::cmd_install(int argc, char **argv) noexcept
 {
     if (argc == 0) {
         fprintf(stderr, "usage: vpkg install <package...>\n");
