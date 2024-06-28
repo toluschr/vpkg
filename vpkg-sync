@@ -10,7 +10,9 @@ import fnmatch
 import dacite
 import typing
 import time
+import zlib
 import json
+import sys
 
 import urllib.parse
 
@@ -93,11 +95,21 @@ for name, source in config.sources.items():
     if isinstance(source, DebianSource):
         parts = urllib.parse.urlparse(source.base_url)
         distribution_path = pathlib.Path(parts.path if parts.path else "/")/source.distribution
-        package_path = (distribution_path/"dists"/'/'.join(source.components)/f"binary-{machine}"/"Packages").as_posix()
+        package_path = distribution_path/"dists"/'/'.join(source.components)/f"binary-{machine}"/"Packages"
 
-        package_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, package_path, "", "", ""))
+        package_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, package_path.as_posix(), "", "", ""))
         response = requests.get(package_url)
-        content = response.content
+        if response.status_code != 200:
+            package_path = package_path.parent/"Packages.gz"
+            package_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, package_path.as_posix(), "", "", ""))
+
+            response = requests.get(package_url)
+            if response.status_code != 200:
+                print(f"{name}: request failed", file=sys.stderr)
+
+            content = zlib.decompress(response.content, 16+zlib.MAX_WBITS)
+        else:
+            content = response.content
 
         for item in parse_debian_package(content):
             k, v = item["Package"], item
