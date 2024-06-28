@@ -21,7 +21,10 @@ from typing import Optional
 
 machine = platform.machine()
 match machine:
+    case "i686": machine = "i386"
     case "x86_64": machine = "amd64"
+    case "armv7l": machine = "armhf"
+    case "aarch64": machine = "arm64"
     case _: raise ValueError(machine)
 
 # @todo: Don't output in critical section. Use queue.
