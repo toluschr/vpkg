@@ -8,17 +8,11 @@ not_deps = ["musl"]
 [sources.discord]
 url = "https://discord.com/api/download?platform=linux&format=deb"
 
-# [packages.obsidian]
-# url = "https://github.com/obsidianmd/obsidian-releases"
-# filename = "obsidian-*-amd64.deb"
-# 
-# [packages.figma-linux]
-# url = "https://github.com/Figma-Linux/figma-linux"
-# filename = "figma-linux_*_linux_amd64.deb"
-# 
-# [brave-browser]
-# url = "https://github.com/brave/brave-browser"
-# filename = "brave-browser_*_amd64.deb"
+[sources.debian]
+base_url = "http://ftp.de.debian.org"
+distribution = "debian"
+components = ["bookworm", "main"]
+whitelist = ["massif-visualizer"]
 
 [sources.obsidian]
 repository = "obsidianmd/obsidian-releases"
