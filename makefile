@@ -15,7 +15,7 @@ OBJ += update.o
 OBJ += install.o
 OBJ += repodata.o
 OBJ += simdini/ini.o
-OBJ += simdjson/singleheader/simdjson.o
+# OBJ += simdjson/singleheader/simdjson.o
 
 DEP = $(OBJ:%.o=%.d)
 
