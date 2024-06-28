@@ -1,22 +1,22 @@
 CC = gcc
-CC_FLAGS = -I include -Wall -march=native -Og -ggdb
+CC_FLAGS = -I. -Wall -march=native -Og -ggdb
 
 CXX = g++
-CXX_FLAGS = -I include -I simdjson/singleheader/ -Wall -march=native -Og -ggdb -fpermissive -std=c++17
+CXX_FLAGS = -I. -Wall -march=native -Og -ggdb -fpermissive -std=c++17
 
 LD_FLAGS = -lcurl -lxbps -larchive
 
-BIN = vpkg
+BIN = vpkg/vpkg
 
-OBJ += vpkg.o
-OBJ += util.o
-OBJ += config.o
-OBJ += repodata.o
+OBJ += vpkg/vpkg.o
+OBJ += vpkg/util.o
+OBJ += vpkg/config.o
+OBJ += vpkg/repodata.o
 OBJ += simdini/ini.o
 
-OBJ += list.o
-OBJ += update.o
-OBJ += install.o
+OBJ += vpkg/list.o
+OBJ += vpkg/update.o
+OBJ += vpkg/install.o
 
 DEP = $(OBJ:%.o=%.d)
 
