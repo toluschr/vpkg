@@ -1,13 +1,13 @@
 [sources.code]
 url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 
+[sources.gitkraken]
+url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
+not_deps = ["musl"]
+
 [sources.discord]
 url = "https://discord.com/api/download?platform=linux&format=deb"
 
-# [packages.gitkraken]
-# not_deps = "musl"
-# url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
-# 
 # [packages.obsidian]
 # url = "https://github.com/obsidianmd/obsidian-releases"
 # filename = "obsidian-*-amd64.deb"
