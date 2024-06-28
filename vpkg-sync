@@ -92,6 +92,8 @@ def print_package(p: PackageSpecification):
     print()
 
 for name, source in config.sources.items():
+    print(f"Syncing {name}", file=sys.stderr)
+
     if isinstance(source, DebianSource):
         parts = urllib.parse.urlparse(source.base_url)
         distribution_path = pathlib.Path(parts.path if parts.path else "/")/source.distribution
