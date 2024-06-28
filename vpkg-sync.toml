@@ -1,3 +1,7 @@
+[sources.scenebuilder]
+repository = "gluonhq/scenebuilder"
+pattern = "SceneBuilder-*.deb"
+
 [sources.code]
 url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 
