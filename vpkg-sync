@@ -121,8 +121,8 @@ for name, source in config.sources.items():
 
             packages = source.packages if source.packages is not None else {}
 
-            binary_path = (distribution_path/v["Filename"]).as_posix()
-            binary_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, binary_path, "", "", ""))
+            binary_path = distribution_path/v["Filename"]
+            binary_url = urllib.parse.urlunparse((parts.scheme, parts.netloc, binary_path.as_posix(), "", "", ""))
 
             p = packages.setdefault(k, PackageSpecification(name=None, not_deps=None, deps=None, url=None, last_modified=None, version=None))
             p.name = p.name if p.name is not None else k
@@ -130,8 +130,8 @@ for name, source in config.sources.items():
             p.version = p.version if p.version is not None else v["Version"]
             print_package(p)
     elif isinstance(source, GithubSource):
-        path = (pathlib.Path("/")/"repos"/source.repository/"releases"/"latest").as_posix()
-        url = urllib.parse.urlunparse(("https", "api.github.com", path, "", "", ""))
+        path = pathlib.Path("/")/"repos"/source.repository/"releases"/"latest"
+        url = urllib.parse.urlunparse(("https", "api.github.com", path.as_posix(), "", "", ""))
 
         response = requests.get(url)
         release = dacite.from_dict(data_class=GithubRelease, data=response.json())
