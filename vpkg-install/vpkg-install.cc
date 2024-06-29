@@ -463,10 +463,14 @@ static int download_and_install_multi(struct xbps_handle *xhp, const std::vector
             status.pop();
             sem_post(&sem_data);
 
-            if (last_offset < temp_entry.offset)
-                fprintf(stderr, "\033[%ldB", temp_entry.offset - last_offset);
-            if (last_offset > temp_entry.offset)
+            if (last_offset < temp_entry.offset) {
+                for (size_t i = last_offset; i < temp_entry.offset; i++) {
+                    fprintf(stderr, "\n");
+                }
+            }
+            if (last_offset > temp_entry.offset) {
                 fprintf(stderr, "\033[%ldA", last_offset - temp_entry.offset);
+            }
 
             double progress;
             if (temp_entry.dltotal == 0)
