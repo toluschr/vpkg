@@ -9,6 +9,7 @@ import pathlib
 import tomllib
 import fnmatch
 import dacite
+import lzma
 import time
 import zlib
 import sys
@@ -26,6 +27,8 @@ match machine:
     case "armv7l": machine = "armhf"
     case "aarch64": machine = "arm64"
     case _: raise ValueError(machine)
+
+DEBIAN_BINARY = f"binary-{machine}"
 
 # @todo: Don't output in critical section. Use queue.
 output_lock = threading.Lock()
@@ -133,32 +136,30 @@ def process_single_source(name, source):
         parts = urllib.parse.urlparse(source.base_url)
         base_path = pathlib.Path(parts.path if parts.path else "/")
         distribution_path = base_path/source.distribution
-        component_path = distribution_path/"dists"/'/'.join(source.components)
-        package_path = component_path/f"binary-{machine}"/"Packages.gz"
+        dists_path = distribution_path/"dists"
+        binary_path = dists_path/'/'.join(source.components)/DEBIAN_BINARY
 
-        package_url = urllib.parse.urlunparse((parts.scheme,
-                                               parts.netloc,
-                                               package_path.as_posix(),
-                                               "",
-                                               "",
-                                               ""))
-        response = requests.get(package_url)
-        if response.status_code != 200:
-            package_path = package_path.parent/"Packages"
+        try_fetch = [(binary_path/"Packages.xz", lambda d:
+                      lzma.decompress(d)),
+                     (binary_path/"Packages.gz", lambda d:
+                      zlib.decompress(d, 16+zlib.MAX_WBITS)),
+                     (binary_path/"Packages",
+                      lambda d: d)]
+        for path, function in try_fetch:
             package_url = urllib.parse.urlunparse((parts.scheme,
                                                    parts.netloc,
-                                                   package_path.as_posix(),
+                                                   path.as_posix(),
                                                    "",
                                                    "",
                                                    ""))
-
             response = requests.get(package_url)
-            if response.status_code != 200:
-                print(f"{name}: request failed", file=sys.stderr)
 
-            content = response.content
+            if response.status_code == 200:
+                content = function(response.content)
+                break
         else:
-            content = zlib.decompress(response.content, 16+zlib.MAX_WBITS)
+            print(f"{name}: request failed", file=sys.stderr)
+            return
 
         for item in parse_debian_package(content):
             k, v = item["Package"], item
@@ -170,13 +171,13 @@ def process_single_source(name, source):
 
             packages = source.packages if source.packages is not None else {}
 
-            binary_path = distribution_path/v["Filename"]
-            binary_url = urllib.parse.urlunparse((parts.scheme,
-                                                  parts.netloc,
-                                                  binary_path.as_posix(),
-                                                  "",
-                                                  "",
-                                                  ""))
+            deb_path = distribution_path/v["Filename"]
+            deb_url = urllib.parse.urlunparse((parts.scheme,
+                                               parts.netloc,
+                                               deb_path.as_posix(),
+                                               "",
+                                               "",
+                                               ""))
 
             p = packages.setdefault(k, PackageSpec(name=None,
                                                    not_deps=None,
@@ -185,7 +186,7 @@ def process_single_source(name, source):
                                                    last_modified=None,
                                                    version=None))
             p.name = p.name if p.name is not None else k
-            p.url = p.url if p.url is not None else binary_url
+            p.url = p.url if p.url is not None else deb_url
             p.version = p.version if p.version is not None else v["Version"]
             print_package(p)
     elif isinstance(source, GithubSource):
