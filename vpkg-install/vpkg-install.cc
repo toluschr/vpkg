@@ -31,10 +31,6 @@
 #include <atomic>
 #include <queue>
 
-static bool force = false;
-static bool update = false;
-static bool verbose = false;
-
 static void die(const char *message)
 {
     perror(message);
@@ -49,7 +45,10 @@ static void usage(int code)
 
 struct vpkg_check_update_cb_data {
     vpkg::config *config;
-    sem_t sem_data;
+
+    sem_t *sem_data;
+    bool force;
+
     std::vector<::vpkg::config::iterator> *packages_to_update;
 };
 
@@ -119,14 +118,14 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    if (!force && xbps_vpkg_gtver(xpkg, &it->second) != 1) {
+    if (!user->force && xbps_vpkg_gtver(xpkg, &it->second) != 1) {
         return 0;
     }
 
     // @todo: Handle EINTR
-    sem_wait(&user->sem_data);
+    sem_wait(user->sem_data);
     user->packages_to_update->push_back(it);
-    sem_post(&user->sem_data);
+    sem_post(user->sem_data);
 
     return 0;
 }
@@ -639,6 +638,10 @@ static int add_full_deptree(struct xbps_handle *xhp, vpkg::config *config, std::
 
 int main(int argc, char **argv)
 {
+    bool force = false;
+    bool update = false;
+    bool verbose = false;
+
     const char *config_path = nullptr;
     vpkg::config config;
     xbps_handle xh;
@@ -727,18 +730,22 @@ int main(int argc, char **argv)
     }
 
     if (update && argc == 0) {
-        vpkg_check_update_cb_data cbd;
-        cbd.config = &config;
-        cbd.packages_to_update = &to_install;
-
-        if ((errno = sem_init(&cbd.sem_data, 0, 1)) != 0) {
+        sem_t sem_data;
+        if ((errno = sem_init(&sem_data, 0, 1)) != 0) {
             perror("sem_init");
             goto end_xbps_lock;
         }
 
+        vpkg_check_update_cb_data cbd;
+        cbd.config = &config;
+        cbd.force = force;
+        cbd.sem_data = &sem_data;
+        cbd.packages_to_update = &to_install;
+
         xbps_pkgdb_foreach_cb_multi(&xh, vpkg_check_update_cb, &cbd);
     } else if (argc != 0) {
         to_install.reserve(argc);
+
         for (int i = 0; i < argc; i++) {
             auto it = config.find(argv[i]);
             if (it == config.end()) {
@@ -770,7 +777,7 @@ int main(int argc, char **argv)
         goto end_xbps_lock;
     }
 
-    if (::download_and_install_multi(&xh, to_install, argc, force, false) != 0) {
+    if (::download_and_install_multi(&xh, to_install, update ? to_install.size() : argc, force, update) != 0) {
         ;
     }
 
