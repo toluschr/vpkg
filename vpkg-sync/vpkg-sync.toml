@@ -4,64 +4,64 @@ distribution = "debian"
 components = ["bookworm", "main"]
 whitelist = ["massif-visualizer"]
 
-# [sources.scenebuilder]
-# repository = "gluonhq/scenebuilder"
-# pattern = "SceneBuilder-*.deb"
-# 
-# [sources.code]
-# url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
-# 
-# [sources.code-insiders]
-# url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"
-# 
-# [sources.gitkraken]
-# url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
-# not_deps = ["musl"]
-# 
-# [sources.discord]
-# url = "https://discord.com/api/download?platform=linux&format=deb"
-# 
-# [sources.unity]
-# base_url = "https://hub-dist.unity3d.com/artifactory/"
-# distribution = "hub-debian-prod-local"
-# components = ["stable", "main"]
-# 
-# [sources.obsidian]
-# repository = "obsidianmd/obsidian-releases"
-# pattern = "obsidian-*-amd64.deb"
-# 
-# [sources.figma-linux]
-# repository = "Figma-Linux/figma-linux"
-# pattern = "figma-linux_*_linux_amd64.deb"
-# 
-# [sources.brave-browser]
-# repository = "brave/brave-browser"
-# pattern = "*_amd64.deb"
-# 
-# [sources.spotify]
-# base_url = "http://repository.spotify.com"
-# distribution = ""
-# components = ["stable", "non-free"]
-# 
-# # configure packages
-# [sources.slack]
-# base_url = "https://packagecloud.io/slacktechnologies/slack/"
-# distribution = "debian"
-# components = ["jessie", "main"]
-# 
-# [sources.llvm19]
-# base_url = "https://apt.llvm.org/"
-# distribution = "bullseye"
-# components = ["llvm-toolchain-bullseye", "main"]
-# whitelist = ["libllvm19", "libclang-cpp19", "clang-format-19", "clang-19"]
-# 
-# [sources.llvm19.packages.clang-19]
-# name = "clang19"
-# deps = ["libllvm19>=0", "libclang-cpp19>=0"]
-# 
-# [sources.llvm19.packages.clang-format-19]
-# name = "clang-format19"
-# deps = ["libllvm19>=0", "libclang-cpp19>=0"]
-# 
-# [sources.llvm19.packages.libclang-cpp19]
-# deps = ["libllvm19>=0"]
+[sources.scenebuilder]
+repository = "gluonhq/scenebuilder"
+pattern = "SceneBuilder-*.deb"
+
+[sources.code]
+url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
+
+[sources.code-insiders]
+url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"
+
+[sources.gitkraken]
+url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
+not_deps = ["musl"]
+
+[sources.discord]
+url = "https://discord.com/api/download?platform=linux&format=deb"
+
+[sources.unity]
+base_url = "https://hub-dist.unity3d.com/artifactory/"
+distribution = "hub-debian-prod-local"
+components = ["stable", "main"]
+
+[sources.obsidian]
+repository = "obsidianmd/obsidian-releases"
+pattern = "obsidian-*-amd64.deb"
+
+[sources.figma-linux]
+repository = "Figma-Linux/figma-linux"
+pattern = "figma-linux_*_linux_amd64.deb"
+
+[sources.brave-browser]
+repository = "brave/brave-browser"
+pattern = "*_amd64.deb"
+
+[sources.spotify]
+base_url = "http://repository.spotify.com"
+distribution = ""
+components = ["stable", "non-free"]
+
+# configure packages
+[sources.slack]
+base_url = "https://packagecloud.io/slacktechnologies/slack/"
+distribution = "debian"
+components = ["jessie", "main"]
+
+[sources.llvm19]
+base_url = "https://apt.llvm.org/"
+distribution = "bullseye"
+components = ["llvm-toolchain-bullseye", "main"]
+whitelist = ["libllvm19", "libclang-cpp19", "clang-format-19", "clang-19"]
+
+[sources.llvm19.packages.clang-19]
+name = "clang19"
+deps = ["libllvm19>=0", "libclang-cpp19>=0"]
+
+[sources.llvm19.packages.clang-format-19]
+name = "clang-format19"
+deps = ["libllvm19>=0", "libclang-cpp19>=0"]
+
+[sources.llvm19.packages.libclang-cpp19]
+deps = ["libllvm19>=0"]
