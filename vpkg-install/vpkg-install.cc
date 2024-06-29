@@ -714,12 +714,12 @@ int main(int argc, char **argv)
 
     if (setenv("XDEB_SHLIBS", VPKG_XDEB_SHLIBS, 1) != 0) {
         perror("failed to set shlibs env");
-        goto end_xbps_lock;
+        goto end_xbps;
     }
 
     if (mkdir(VPKG_TEMPDIR, 0644) < 0 && errno != EEXIST) {
         perror("failed to create tempdir");
-        goto end_xbps_lock;
+        goto end_xbps;
     }
 
     if ((errno = xbps_pkgdb_lock(&xh)) != 0) {
