@@ -71,6 +71,8 @@ int main(int argc, char **argv)
         }
     }
 
+    rv = EXIT_SUCCESS;
+
 out:
     return rv;
 
