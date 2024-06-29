@@ -529,6 +529,9 @@ static int download_and_install_multi(struct xbps_handle *xhp, const std::vector
 
         // @todo: free vector
         switch (rv) {
+        case 0:
+            xbps_object_release(binpkgd);
+            break;
         case EEXIST:
             // ignore already installed "packages may be updated"
             fprintf(stderr, "%s: Already installed\n", pkgver);
@@ -538,28 +541,23 @@ static int download_and_install_multi(struct xbps_handle *xhp, const std::vector
             fprintf(stderr, "%s: Not found in repository pool\n", pkgver);
             xbps_object_release(binpkgd);
             return -1;
-        case 0:
-            break;
         default:
             fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
             xbps_object_release(binpkgd);
             return -1;
         }
+    }
 
-        rv = xbps_transaction_prepare(xhp);
-        switch (rv) {
-        case 0:
-            xbps_object_release(binpkgd);
-            break;
-        case ENODEV:
-            fprintf(stderr, "%s: Missing dependencies.\n", pkgver);
-            xbps_object_release(binpkgd);
-            return -1;
-        default:
-            fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
-            xbps_object_release(binpkgd);
-            return -1;
-        }
+    rv = xbps_transaction_prepare(xhp);
+    switch (rv) {
+    case 0:
+        break;
+    case ENODEV:
+        fprintf(stderr, "Missing dependencies.\n");
+        return -1;
+    default:
+        fprintf(stderr, "transaction_prepare: unexpected error: %d\n", rv);
+        return -1;
     }
 
     if (xhp->transd == NULL) {
