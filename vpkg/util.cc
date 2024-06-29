@@ -1,5 +1,7 @@
 #include "util.hh"
 
+#include <algorithm>
+
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
@@ -69,6 +71,10 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
 
         old_version = std::string{version, (long unsigned int)(revision - version - 1)};
         new_version = std::string{vpkg->version};
+
+        std::replace(new_version.begin(), new_version.end(), '-', '.');
+        std::replace(new_version.begin(), new_version.end(), '_', '.');
+        std::replace(new_version.begin(), new_version.end(), '/', '.');
 
         return (xbps_cmpver(old_version.c_str(), new_version.c_str()) < 0);
     }
