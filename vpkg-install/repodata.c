@@ -339,13 +339,13 @@ int index_add(struct xbps_handle *xhp, char **argv, int nargs)
         }
 
         if (!xbps_file_sha256(sha256, sizeof(sha256), pathname)) {
-            fprintf(stderr, "failed sha256\n");
+            fprintf(stderr, "sha256 invalid\n");
             xbps_object_release(binpkgd);
             continue;
         }
 
         if (!xbps_dictionary_set_cstring(binpkgd, "filename-sha256", sha256)) {
-            fprintf(stderr, "failed sha256\n");
+            fprintf(stderr, "filename-sha256 invalid\n");
             xbps_object_release(binpkgd);
             continue;
         }

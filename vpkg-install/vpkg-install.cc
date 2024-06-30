@@ -226,19 +226,19 @@ static void *vpkg_do_update_thread(void *arg_)
             return NULL;
         }
 
+        CURLcode code = download(url.c_str(), f, arg);
+        fclose(f);
+
         // download all packages first
-        CURLcode code;
-        if ((code = download(url.c_str(), f, arg)) != CURLE_OK) {
+        if (code != CURLE_OK) {
             *arg->threads_done += 1;
             *arg->anyerr = true;
             sem_post(arg->sem_notify);
             return NULL;
         }
-
-        fclose(f);
     }
 
-    // Post "done" after successful download
+    // Post "done" after full successful download
     *arg->threads_done += 1;
     sem_post(arg->sem_notify);
 
@@ -727,6 +727,25 @@ int main(int argc, char **argv)
         goto end_xbps;
     }
 
+    to_install.reserve(argc);
+
+    for (int i = 0; i < argc; i++) {
+        auto it = config.find(argv[i]);
+        if (it == config.end()) {
+            fprintf(stderr, "package %s not found\n", argv[i]);
+            continue;
+        }
+
+        if (!force) {
+            auto xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(xh.pkgdb, argv[i]));
+            if (xpkg != NULL && xbps_vpkg_gtver(xpkg, &it->second) != 1) {
+                continue;
+            }
+        }
+
+        to_install.push_back(it);
+    }
+
     if (update && argc == 0) {
         sem_t sem_data;
         if ((errno = sem_init(&sem_data, 0, 1)) != 0) {
@@ -741,28 +760,9 @@ int main(int argc, char **argv)
         cbd.packages_to_update = &to_install;
 
         xbps_pkgdb_foreach_cb_multi(&xh, vpkg_check_update_cb, &cbd);
-    } else if (argc != 0) {
-        to_install.reserve(argc);
-
-        for (int i = 0; i < argc; i++) {
-            auto it = config.find(argv[i]);
-            if (it == config.end()) {
-                fprintf(stderr, "package %s not found\n", argv[i]);
-                continue;
-            }
-
-            if (!force) {
-                auto xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(xh.pkgdb, argv[i]));
-                if (xpkg != NULL && xbps_vpkg_gtver(xpkg, &it->second) != 1) {
-                    continue;
-                }
-            }
-
-            to_install.push_back(it);
-        }
-    } else {
+    } else if (argc == 0) {
         fprintf(stderr, "usage: vpkg-install <package...>\n");
-        return EXIT_FAILURE;
+        goto end_xbps_lock;
     }
 
     if ((errno = add_full_deptree(&xh, &config, &to_install)) != 0) {
@@ -782,6 +782,8 @@ int main(int argc, char **argv)
     if (std::filesystem::remove_all(VPKG_TEMPDIR, ec) == static_cast<std::uintmax_t>(-1)) {
         fprintf(stderr, "failed to cleanup tempdir\n");
     }
+
+    rv = EXIT_SUCCESS;
 
 end_xbps_lock:
 end_xbps:
