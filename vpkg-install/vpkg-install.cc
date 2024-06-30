@@ -208,7 +208,7 @@ static void *vpkg_do_update_thread(void *arg_)
         assert(at);
 
         *at = '\0';
-        if (mkdir(buf, 0644) < 0) {
+        if (mkdir(buf, 0644) < 0 && errno != EEXIST) {
             // @todo: Handle this
             *arg->threads_done += 1;
             *arg->anyerr = true;
