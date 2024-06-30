@@ -2,6 +2,7 @@
 
 import multiprocessing
 import threading
+import itertools
 import requests
 import platform
 import pathlib
@@ -11,6 +12,7 @@ import lzma
 import time
 import zlib
 import sys
+import re
 
 import urllib.parse
 
@@ -22,19 +24,6 @@ from typing import Optional
 
 
 @dataclass
-match machine:
-    case "i686": machine = "i386"
-    case "x86_64": machine = "amd64"
-    case "armv7l": machine = "armhf"
-    case "aarch64": machine = "arm64"
-    case _: raise ValueError(machine)
-
-DEBIAN_BINARY = f"binary-{machine}"
-
-# @todo: Don't output in critical section. Use queue.
-output_lock = threading.Lock()
-
-
 class PackageSpec():
     url: Optional[str] = None
     name: Optional[str] = None
@@ -87,6 +76,112 @@ class DebianPackage():
     filename: str
 
 
+def load_shlibs_mapping() -> dict[str, str]:
+    with open("/var/lib/vpkg/shlibs", "r") as shlibs_file:
+        shlibs_data = shlibs_file.read()
+
+        out = dict()
+        for line in shlibs_data.strip().split('\n'):
+            if line.strip()[0] == '#':
+                continue
+
+            key, val = line.split(' ')[:2]
+            out[key] = val
+
+        return out
+
+
+# This probably has a lot of bugs.
+# https://www.debian.org/doc/debian-policy/ch-sharedlibs.html
+def guess_shlibs_from_pkgname(pkgname: str) -> list[str]:
+    if not pkgname.startswith("lib") or \
+       pkgname.endswith("-cross") or \
+       pkgname.endswith("-data")  or \
+       pkgname.endswith("-java")  or \
+       pkgname.endswith("-dev"):
+        return []
+
+    prefix = ""
+    pkgver = ""
+
+    out = []
+    while True:
+        # case: name
+        if (match0 := re.search(r"(?<![a-zA-Z+]-)[0-9.]+", pkgname)) is None:
+            if not pkgver: pkgver = "0"
+            out.append(f"{prefix}{pkgname}.so.{pkgver}")
+            break
+
+        span0 = match0.span()
+
+        # case: name + number
+        if len(pkgname) <= span0[1]:
+            prefix += pkgname[:span0[0]].rstrip('-')
+            out.append(f"{prefix}.so.{pkgname[span0[0]:span0[1]]}")
+            break
+
+        # case: name + number + multiple letters
+        if (match1 := re.match("^[a-zA-Z+]{2,}", pkgname[span0[1]:])) is not None:
+            span1 = match1.span()
+            prefix += pkgname[:span0[1] + span1[1]]
+            pkgname = pkgname[span0[1] + span1[1]:]
+            continue
+
+        # case: name + number + one letter
+        if (match1 := re.match("^[a-zA-Z+]", pkgname[span0[1]:])) is not None:
+            span1 = match1.span()
+            out.append(f"{prefix}{pkgname[:span0[0]]}.so.{pkgname[span0[0]:span0[1]]}")
+            prefix = prefix + pkgname[:span0[1]]
+            pkgname = pkgname[span0[1]:]
+            pkgver = ""
+            continue
+
+        # case: name + number + dash + number
+        if (match1 := re.match("^-[0-9.]+", pkgname[span0[1]:])) is not None:
+            span1 = match1.span()
+            prefix += pkgname[:span0[1] + span1[0]]
+            pkgname = pkgname[span0[1] + span1[0] + 1:]
+            continue
+
+        # case: name + number + dash + name
+        if (match1 := re.match("^-[a-zA-Z+]+", pkgname[span0[1]:])) is not None:
+            span1 = match1.span()
+            prefix += pkgname[:span0[0]]
+            prefix += pkgver
+            prefix += pkgname[span0[1] + span1[0]:span0[1] + span1[1]]
+            pkgver = pkgname[span0[0]:span0[1]]
+            pkgname = pkgname[span0[1] + span1[1]:]
+            continue
+
+    # https://stackoverflow.com/questions/69792413/replace-in-a-string-with-a-set-of-characters-give-all-possible-string-combi
+    def do_iter(items):
+        for s in items:
+            for p in map(iter, itertools.product("_-", repeat=s.count('-'))):
+                yield (''.join(c if c != '-' else next(p) for c in s))
+
+    return list(do_iter(out))
+
+
+# print(guess_shlibs_from_pkgname("liba52"))
+# print(guess_shlibs_from_pkgname("librte-baseband-la12xx23")) # librte_baseband_la12xx.so.23
+# print(guess_shlibs_from_pkgname("libkf5solid5"))
+# print(guess_shlibs_from_pkgname("libkf5-5"))
+# print(guess_shlibs_from_pkgname("liba52-0.7.4"))
+# print(guess_shlibs_from_pkgname("libscrypt-kdf1"))
+# print(guess_shlibs_from_pkgname("libcurl3-gnutls"))
+# print(guess_shlibs_from_pkgname("libtinyxml2.6.2v5"))
+# print(guess_shlibs_from_pkgname("libresid-builder0c2a"))
+# print(guess_shlibs_from_pkgname("lib32go19-mips64r6"))
+# print(guess_shlibs_from_pkgname("libsecp256k1-1"))
+# print(guess_shlibs_from_pkgname("libglib3.5.8a5-asm5-3-5"))
+# print(guess_shlibs_from_pkgname("libstxxl1v5"))
+# print(guess_shlibs_from_pkgname("libmono-i18n4.0"))
+# print(guess_shlibs_from_pkgname("libntfs-3g89"))
+# print(guess_shlibs_from_pkgname("gir1.2-telepathyglib-0.12"))
+# print(guess_shlibs_from_pkgname("libgir1.2-telepathyglib-0.12"))
+# print(guess_shlibs_from_pkgname("libwayland-cursor++1"))
+# exit()
+
 def parse_debian_package(string: bytes | str) -> dict[str, DebianPackage]:
     if isinstance(string, bytes):
         string = string.decode()
@@ -120,34 +215,38 @@ def parse_debian_package(string: bytes | str) -> dict[str, DebianPackage]:
 
 
 def print_package(p: PackageSpec):
-    global output_lock
+    global data_lock
 
-    with output_lock:
-        print(f"[{p.name}]")
+    with data_lock:
+        print(f"[{p.name}]", file=vpkg_config_file)
 
         if p.url is not None:
-            print(f"url = {p.url}")
+            print(f"url = {p.url}", file=vpkg_config_file)
 
         if p.deps is not None:
-            print(f"deps = {' '.join(p.deps)}")
+            print(f"deps = {' '.join(p.deps)}", file=vpkg_config_file)
 
         if p.not_deps is not None:
-            print(f"not_deps = {' '.join(p.not_deps)}")
+            print(f"not_deps = {' '.join(p.not_deps)}", file=vpkg_config_file)
 
         if p.version is not None:
-            print(f"version = {p.version}")
+            print(f"version = {p.version}", file=vpkg_config_file)
 
         if p.last_modified is not None:
             assert isinstance(p.last_modified, datetime)
 
             last_modified_unix = int(time.mktime(p.last_modified.timetuple()))
-            print(f"last_modified = {last_modified_unix}")
+            print(f"last_modified = {last_modified_unix}", file=vpkg_config_file)
 
-        print()
+        print("", file=vpkg_config_file)
+
+
+def debian_version_to_xbps(version: str) -> str:
+    return re.sub("[-/_]", '.', version)
 
 
 def process_single_source(name, source):
-    global machine
+    global machine, shlibs
     print(f"Syncing {name}", file=sys.stderr)
 
     if isinstance(source, DebianSource):
@@ -212,6 +311,12 @@ def process_single_source(name, source):
             # p.deps = p.deps if p.deps is not None else v.depends
 
             print_package(p)
+
+            possible_shlibs = guess_shlibs_from_pkgname(k)
+            with data_lock:
+                for shlib in possible_shlibs:
+                    shlibs.setdefault(shlib, k)
+
     elif isinstance(source, GithubSource):
         if source.packages is None:
             return
@@ -273,6 +378,21 @@ def thread_fn(begin, length):
         process_single_source(name, source)
 
 
+machine = platform.machine()
+match machine:
+    case "i686": machine = "i386"
+    case "x86_64": machine = "amd64"
+    case "armv7l": machine = "armhf"
+    case "aarch64": machine = "arm64"
+    case _: raise ValueError(machine)
+
+DEBIAN_BINARY = f"binary-{machine}"
+
+# @todo: Don't output in critical section. Use queue.
+data_lock = threading.Lock()
+shlibs = load_shlibs_mapping()
+vpkg_config_file = open("/etc/vpkg.ini", "w+")
+
 if __name__ == '__main__':
     with open("vpkg-sync.toml", "rb") as config_file:
         p = tomllib.load(config_file)
@@ -295,7 +415,14 @@ if __name__ == '__main__':
         for name, source in config.sources.items():
             process_single_source(name, source)
     else:
+        threads = []
         for i in range(0, numthreads):
             size = (numitems + (numthreads - 1)) // numthreads
-            t = threading.Thread(target=thread_fn, args=(i*size, size))
-            t.start()
+            threads.append(threading.Thread(target=thread_fn, args=(i*size, size)))
+            threads[i].start()
+
+        for i in range(0, numthreads):
+            threads[i].join()
+
+    with open("/var/lib/vpkg/shlibs", "w") as shlibs_file:
+        shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
