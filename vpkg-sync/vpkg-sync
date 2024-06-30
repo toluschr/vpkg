@@ -1,14 +1,12 @@
 #!/bin/env python3
 
 import multiprocessing
-import dataclasses
 import threading
 import requests
 import platform
 import pathlib
 import tomllib
 import fnmatch
-import dacite
 import lzma
 import time
 import zlib
@@ -16,11 +14,14 @@ import sys
 
 import urllib.parse
 
+from pydantic.dataclasses import dataclass
+from pydantic.tools import parse_obj_as
+
 from datetime import datetime
 from typing import Optional
 
 
-machine = platform.machine()
+@dataclass
 match machine:
     case "i686": machine = "i386"
     case "x86_64": machine = "amd64"
@@ -34,69 +35,86 @@ DEBIAN_BINARY = f"binary-{machine}"
 output_lock = threading.Lock()
 
 
-@dataclasses.dataclass
 class PackageSpec():
-    url: Optional[str]
-    name: Optional[str]
-    not_deps: Optional[list[str]]
-    version: Optional[str]
-    last_modified: Optional[str | datetime]
-    deps: Optional[list[str]]
+    url: Optional[str] = None
+    name: Optional[str] = None
+    not_deps: Optional[list[str]] = None
+    version: Optional[str] = None
+    last_modified: Optional[str | datetime] = None
+    deps: Optional[list[str]] = None
 
 
-@dataclasses.dataclass
+@dataclass
+class GithubSource():
+    repository: str
+    packages: Optional[dict[str, PackageSpec]] = None
+
+
+@dataclass
 class GithubAsset():
     name: str
     updated_at: str
     browser_download_url: str
 
 
-@dataclasses.dataclass
-class GithubSource(PackageSpec):
-    repository: str
-    pattern: str
-
-
-@dataclasses.dataclass
+@dataclass
 class DebianSource():
     base_url: str
     distribution: str
     components: list[str]
-    packages: Optional[dict[str, PackageSpec]]
-    whitelist: Optional[list[str]]
-    blacklist: Optional[list[str]]
+    packages: Optional[dict[str, PackageSpec]] = None
+    whitelist: Optional[list[str]] = None
+    blacklist: Optional[list[str]] = None
+    whitelist_autoappend: bool = False
 
 
-@dataclasses.dataclass
+@dataclass
 class GithubRelease():
     assets: list[GithubAsset]
 
 
-@dataclasses.dataclass
+@dataclass
 class Config():
-    github_token: Optional[str]
-    sources: Optional[dict[str, DebianSource | GithubSource | PackageSpec]]
+    github_token: Optional[str] = None
+    sources: Optional[dict[str, DebianSource | GithubSource | PackageSpec]] = None
 
 
-def parse_debian_package(string: bytes | str) -> list[dict[str, str]]:
+@dataclass
+class DebianPackage():
+    package: str
+    version: str
+    depends: list[str]
+    filename: str
+
+
+def parse_debian_package(string: bytes | str) -> dict[str, DebianPackage]:
     if isinstance(string, bytes):
         string = string.decode()
 
     assert isinstance(string, str)
 
-    packages = list()
+    packages = dict()
     for package_string in string.split("\n\n"):
-        if len(package_string) == 0: continue
+        if len(package_string) == 0:
+            continue
 
         package = dict()
         for entry_string in package_string.split("\n"):
             # skip continutations
-            if entry_string[0].isspace(): continue
+            if entry_string[0].isspace():
+                continue
 
             key, value = entry_string.split(": ", 1)
-            package[key] = value
+            package[key.lower()] = value
 
-        packages.append(package)
+        if "depends" in package:
+            package["depends"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["depends"])]
+        else:
+            package["depends"] = []
+
+        package = parse_obj_as(DebianPackage, package)
+
+        packages[package.package] = package
 
     return packages
 
@@ -161,17 +179,20 @@ def process_single_source(name, source):
             print(f"{name}: request failed", file=sys.stderr)
             return
 
-        for item in parse_debian_package(content):
-            k, v = item["Package"], item
+        packages = parse_debian_package(content)
+
+        for k in packages.keys():
             if source.whitelist is not None and k not in source.whitelist:
                 continue
 
             if source.blacklist is not None and k in source.blacklist:
                 continue
 
-            packages = source.packages if source.packages is not None else {}
+            v = packages[k]
 
-            deb_path = distribution_path/v["Filename"]
+            manual_packages = source.packages if source.packages is not None else {}
+
+            deb_path = distribution_path/v.filename
             deb_url = urllib.parse.urlunparse((parts.scheme,
                                                parts.netloc,
                                                deb_path.as_posix(),
@@ -179,17 +200,22 @@ def process_single_source(name, source):
                                                "",
                                                ""))
 
-            p = packages.setdefault(k, PackageSpec(name=None,
-                                                   not_deps=None,
-                                                   deps=None,
-                                                   url=None,
-                                                   last_modified=None,
-                                                   version=None))
+            p = manual_packages.setdefault(k, PackageSpec(name=None,
+                                                          not_deps=None,
+                                                          deps=None,
+                                                          url=None,
+                                                          last_modified=None,
+                                                          version=None))
             p.name = p.name if p.name is not None else k
             p.url = p.url if p.url is not None else deb_url
-            p.version = p.version if p.version is not None else v["Version"]
+            p.version = p.version if p.version is not None else v.version
+            # p.deps = p.deps if p.deps is not None else v.depends
+
             print_package(p)
     elif isinstance(source, GithubSource):
+        if source.packages is None:
+            return
+
         path = pathlib.Path("/")/"repos"/source.repository/"releases"/"latest"
         url = urllib.parse.urlunparse(("https",
                                        "api.github.com",
@@ -199,28 +225,29 @@ def process_single_source(name, source):
                                        ""))
 
         response = requests.get(url)
-        release = dacite.from_dict(data_class=GithubRelease,
-                                   data=response.json())
+        release = parse_obj_as(GithubRelease, response.json())
 
-        asset = None
-        for asset_ in release.assets:
-            if fnmatch.fnmatch(asset_.name, source.pattern):
-                asset = asset_
+        for k in source.packages.keys():
+            for asset in release.assets:
+                if fnmatch.fnmatch(asset.name, k):
+                    break
+            else:
+                continue
 
-        assert asset is not None
+            p = source.packages[k]
 
-        t = datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
+            t = datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
+            if p.name is None:
+                p.name = name
 
-        if source.name is None:
-            source.name = name
+            if p.url is None:
+                p.url = asset.browser_download_url
 
-        if source.url is None:
-            source.url = asset.browser_download_url
+            if p.last_modified is None:
+                p.last_modified = t
 
-        if source.last_modified is None:
-            source.last_modified = t
+            print_package(p)
 
-        print_package(source)
     elif isinstance(source, PackageSpec):
         if source.url is None:
             print(f"{name}: No URL, skipping.", file=sys.stderr)
@@ -247,8 +274,10 @@ def thread_fn(begin, length):
 
 
 if __name__ == '__main__':
-    p = tomllib.load(open("vpkg-sync.toml", "rb"))
-    config = dacite.from_dict(data_class=Config, data=p)
+    with open("vpkg-sync.toml", "rb") as config_file:
+        p = tomllib.load(config_file)
+
+    config = parse_obj_as(Config, p)
 
     if config.sources is None:
         exit(0)
