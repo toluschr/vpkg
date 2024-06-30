@@ -416,10 +416,12 @@ static int download_and_install_multi(struct xbps_handle *xhp, const std::vector
         return -1;
     }
 
+    /*
     if (system("xdeb -SQ >/dev/null 2>&1") != EXIT_SUCCESS) {
         fprintf(stderr, "failed to update shlibs\n");
         return -1;
     }
+    */
 
     pthread_t threads[maxthreads];
     struct vpkg_do_update_thread_data thread_data[maxthreads];
