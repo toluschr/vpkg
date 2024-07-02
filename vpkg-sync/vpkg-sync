@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 import multiprocessing
+import subprocess
 import threading
 import itertools
 import requests
@@ -12,6 +13,7 @@ import lzma
 import time
 import zlib
 import sys
+import os
 import re
 
 import urllib.parse
@@ -396,6 +398,9 @@ vpkg_config_file = open("/etc/vpkg.ini", "w+")
 if __name__ == '__main__':
     with open("vpkg-sync.toml", "rb") as config_file:
         p = tomllib.load(config_file)
+
+    os.environ["XDEB_SHLIBS"] = "/var/lib/vpkg/shlibs"
+    subprocess.run(["xdeb", "-SQ"])
 
     config = parse_obj_as(Config, p)
 
