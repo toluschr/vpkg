@@ -309,7 +309,7 @@ def process_single_source(name, source):
                                                           version=None))
             p.name = p.name if p.name is not None else k
             p.url = p.url if p.url is not None else deb_url
-            p.version = p.version if p.version is not None else v.version
+            p.version = p.version if p.version is not None else debian_version_to_xbps(v.version)
             # p.deps = p.deps if p.deps is not None else v.depends
 
             print_package(p)
@@ -317,7 +317,7 @@ def process_single_source(name, source):
             possible_shlibs = guess_shlibs_from_pkgname(k)
             with data_lock:
                 for shlib in possible_shlibs:
-                    shlibs.setdefault(shlib, k)
+                    shlibs.setdefault(shlib, f"{k}-{p.version}")
 
     elif isinstance(source, GithubSource):
         if source.packages is None:
