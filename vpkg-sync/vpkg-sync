@@ -109,7 +109,7 @@ def guess_shlibs_from_pkgname(pkgname: str) -> list[str]:
     out = []
     while True:
         # case: name
-        if (match0 := re.search(r"(?<![a-zA-Z+]-)[0-9.]+", pkgname)) is None:
+        if (match0 := re.search(r"[0-9.]+", pkgname)) is None:
             if not pkgver: pkgver = "0"
             out.append(f"{prefix}{pkgname}.so.{pkgver}")
             break
@@ -132,7 +132,7 @@ def guess_shlibs_from_pkgname(pkgname: str) -> list[str]:
         # case: name + number + one letter
         if (match1 := re.match("^[a-zA-Z+]", pkgname[span0[1]:])) is not None:
             span1 = match1.span()
-            out.append(f"{prefix}{pkgname[:span0[0]]}.so.{pkgname[span0[0]:span0[1]]}")
+            out.append(f"{prefix}{pkgname[:span0[0]].rstrip('-')}.so.{pkgname[span0[0]:span0[1]]}")
             prefix = prefix + pkgname[:span0[1]]
             pkgname = pkgname[span0[1]:]
             pkgver = ""
@@ -165,6 +165,7 @@ def guess_shlibs_from_pkgname(pkgname: str) -> list[str]:
 
 
 # print(guess_shlibs_from_pkgname("liba52"))
+# print(guess_shlibs_from_pkgname("libssh-gcrypt-4"))
 # print(guess_shlibs_from_pkgname("librte-baseband-la12xx23")) # librte_baseband_la12xx.so.23
 # print(guess_shlibs_from_pkgname("libkf5solid5"))
 # print(guess_shlibs_from_pkgname("libkf5-5"))
