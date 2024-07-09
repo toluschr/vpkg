@@ -431,3 +431,5 @@ if __name__ == '__main__':
 
     with open("/var/lib/vpkg/shlibs", "w") as shlibs_file:
         shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
+
+    vpkg_config_file.close()
