@@ -392,7 +392,6 @@ DEBIAN_BINARY = f"binary-{machine}"
 
 # @todo: Don't output in critical section. Use queue.
 data_lock = threading.Lock()
-shlibs = load_shlibs_mapping()
 vpkg_config_file = open("/etc/vpkg.ini", "w+")
 
 if __name__ == '__main__':
@@ -402,6 +401,7 @@ if __name__ == '__main__':
     os.environ["XDEB_SHLIBS"] = "/var/lib/vpkg/shlibs"
     subprocess.run(["xdeb", "-SQ"])
 
+    shlibs = load_shlibs_mapping()
     config = parse_obj_as(Config, p)
 
     if config.sources is None:
