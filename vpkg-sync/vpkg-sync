@@ -338,23 +338,22 @@ def process_single_source(name, source):
         for k in source.packages.keys():
             for asset in release.assets:
                 if fnmatch.fnmatch(asset.name, k):
+                    p = source.packages[k]
+
+                    t = datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
+                    if p.name is None:
+                        p.name = name
+
+                    if p.url is None:
+                        p.url = asset.browser_download_url
+
+                    if p.last_modified is None:
+                        p.last_modified = t
+
+                    print_package(p)
                     break
             else:
-                continue
-
-            p = source.packages[k]
-
-            t = datetime.strptime(asset.updated_at, '%Y-%m-%dT%H:%M:%SZ')
-            if p.name is None:
-                p.name = name
-
-            if p.url is None:
-                p.url = asset.browser_download_url
-
-            if p.last_modified is None:
-                p.last_modified = t
-
-            print_package(p)
+                print(f"No matches for package {k}", file=sys.stderr)
 
     elif isinstance(source, PackageSpec):
         if source.url is None:
