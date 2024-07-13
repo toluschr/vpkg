@@ -56,13 +56,6 @@ int vpkg::parse_config(::vpkg::config *out, const char *str, size_t len)
         return 1;
     }
 
-    for (auto &pair : *out) {
-        if (pair.first.back() == '/') {
-            fprintf(stderr, "Repos not implemented yet\n");
-            return 1;
-        }
-    }
-
     return 0;
 }
 
