@@ -1,4 +1,5 @@
 #include "vpkg/config.hh"
+#include "vpkg/defs.h"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -73,6 +74,9 @@ std::string vpkg::config_path(const char *default_value)
         return std::string(default_value);
     }
 
+    return VPKG_CONFIG_PATH;
+
+    /*
     // Better: openat
     {
         const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
@@ -90,4 +94,5 @@ std::string vpkg::config_path(const char *default_value)
     }
 
     return config_home + "/vpkg.ini";
+    */
 }
