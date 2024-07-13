@@ -226,14 +226,14 @@ static void *vpkg_do_update_thread(void *arg_)
         push_to_progress_queue(arg, (struct vpkg_progress){ .state = vpkg_progress::INIT });
 
         url = arg->current->second.url;
-        length = snprintf(NULL, 0, "/tmp/vpkg/%d/%.*s.deb", gettid(), (int)arg->current->first.size(), arg->current->first.data());
+        length = snprintf(NULL, 0, "%s/%d/%.*s.deb", VPKG_TEMPDIR, gettid(), (int)arg->current->first.size(), arg->current->first.data());
         if (length < 0) {
             return post_thread_error(arg, "failed to format pathname: %s", strerror(errno));
         }
 
         char deb_package_path[length + 1];
 
-        length = snprintf(deb_package_path, sizeof(deb_package_path), "/tmp/vpkg/%d/%.*s.deb", gettid(), (int)arg->current->first.size(), arg->current->first.data());
+        length = snprintf(deb_package_path, sizeof(deb_package_path), "%s/%d/%.*s.deb", VPKG_TEMPDIR, gettid(), (int)arg->current->first.size(), arg->current->first.data());
         if (length < 0) {
             return post_thread_error(arg, "failed to format pathname: %s", strerror(errno));
         }
