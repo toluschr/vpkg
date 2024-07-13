@@ -22,12 +22,6 @@ struct package {
 using config = typename std::map<std::string_view, vpkg::package>;
 
 /*!
- * @return Empty string on error, set errno
- * @return Config path on success
- */
-std::string config_path(const char *default_value);
-
-/*!
  * @param[in] str A non-nullterminated string, that will be parsed as ini.
  * After parsing, the config entries will point into this memory region. The
  * lifetime of config entries must not exceed the lifetime of this string.

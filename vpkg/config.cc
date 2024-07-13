@@ -58,34 +58,3 @@ int vpkg::parse_config(::vpkg::config *out, const char *str, size_t len)
 
     return 0;
 }
-
-std::string vpkg::config_path(const char *default_value)
-{
-    std::string config_home;
-
-    if (default_value) {
-        return std::string(default_value);
-    }
-
-    return VPKG_CONFIG_PATH;
-
-    /*
-    // Better: openat
-    {
-        const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
-
-        if (xdg_config_home != NULL) {
-            config_home = std::string(xdg_config_home);
-        } else {
-            struct passwd *p = getpwuid(getuid());
-            if (p == NULL) {
-                return "";
-            }
-
-            config_home = std::string(p->pw_dir) + "/.config";
-        }
-    }
-
-    return config_home + "/vpkg.ini";
-    */
-}

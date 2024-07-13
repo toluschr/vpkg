@@ -746,7 +746,7 @@ int main(int argc, char **argv)
     bool update = false;
     bool verbose = false;
 
-    const char *config_path = nullptr;
+    const char *config_path = VPKG_CONFIG_PATH;
     vpkg::config config;
     xbps_handle xh;
     std::error_code ec;
@@ -782,17 +782,7 @@ int main(int argc, char **argv)
 
     argc -= optind, argv += optind;
 
-    {
-        std::string resolved_config_path;
-
-        resolved_config_path = vpkg::config_path(config_path);
-        if (resolved_config_path.size() == 0) {
-            die("unable to canonicalize config path");
-        }
-
-        config_fd = open(resolved_config_path.c_str(), O_RDONLY);
-    }
-
+    config_fd = open(config_path, O_RDONLY);
     if (config_fd < 0) {
         die("unable to open config file");
     }
