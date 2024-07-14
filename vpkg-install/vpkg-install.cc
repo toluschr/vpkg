@@ -209,11 +209,14 @@ static void *post_thread_error(struct vpkg_do_update_thread_data *self, const ch
 
 static void *vpkg_do_update_thread(void *arg_)
 {
-    int length;
     vpkg_do_update_thread_data *arg = static_cast<vpkg_do_update_thread_data *>(arg_);
 
     for (;;) {
-        std::string url;
+        int deb_package_path_length;
+        char *deb_package_path;
+
+        int url_length;
+        char *url;
 
         sem_wait(arg->sem_prod_cons);
         sem_wait(arg->sem_data);
@@ -232,16 +235,32 @@ static void *vpkg_do_update_thread(void *arg_)
 
         push_to_progress_queue(arg, (struct vpkg_progress){ .state = vpkg_progress::INIT });
 
-        url = arg->current->second.url;
-        length = snprintf(NULL, 0, "%s/%d/%.*s.deb", VPKG_TEMPDIR, gettid(), (int)arg->current->first.size(), arg->current->first.data());
-        if (length < 0) {
+        url_length = arg->current->second.url.size();
+        url = alloca(sizeof(*url) * (url_length + 1));
+        memcpy(url, arg->current->second.url.data(), url_length);
+        url[url_length] = '\0';
+
+        deb_package_path_length = snprintf(NULL,
+                                           0,
+                                           "%s/%d/%.*s.deb",
+                                           VPKG_TEMPDIR,
+                                           gettid(),
+                                           (int)arg->current->first.size(),
+                                           arg->current->first.data());
+        if (deb_package_path_length < 0) {
             return post_thread_error(arg, "failed to format pathname: %s", strerror(errno));
         }
 
-        char deb_package_path[length + 1];
+        deb_package_path = alloca(sizeof(*deb_package_path) * (deb_package_path_length + 1));
 
-        length = snprintf(deb_package_path, sizeof(deb_package_path), "%s/%d/%.*s.deb", VPKG_TEMPDIR, gettid(), (int)arg->current->first.size(), arg->current->first.data());
-        if (length < 0) {
+        deb_package_path_length = snprintf(deb_package_path,
+                                           deb_package_path_length + 1,
+                                           "%s/%d/%.*s.deb",
+                                           VPKG_TEMPDIR,
+                                           gettid(),
+                                           (int)arg->current->first.size(),
+                                           arg->current->first.data());
+        if (deb_package_path_length < 0) {
             return post_thread_error(arg, "failed to format pathname: %s", strerror(errno));
         }
 
@@ -259,7 +278,7 @@ static void *vpkg_do_update_thread(void *arg_)
             return post_thread_error(arg, "failed to open destination file: %s", strerror(errno));
         }
 
-        CURLcode code = download(url.c_str(), f, arg);
+        CURLcode code = download(url, f, arg);
         fclose(f);
 
         // download all packages first
@@ -290,7 +309,6 @@ static void *vpkg_do_update_thread(void *arg_)
         pid_t pid = fork();
         switch (pid) {
             int status;
-            char *at;
 
         case -1:
             perror("fork");
@@ -304,9 +322,6 @@ static void *vpkg_do_update_thread(void *arg_)
                 // @todo message
                 exit(EXIT_FAILURE);
             }
-
-            at = strrchr(deb_package_path, '/');
-            assert(at);
 
             *at = '\0';
             if (setenv("XDEB_PKGROOT", deb_package_path, 1) < 0) {
