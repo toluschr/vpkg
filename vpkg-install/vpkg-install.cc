@@ -44,6 +44,13 @@ static void usage(int code)
     exit(code);
 }
 
+static void free_preserve_errno(void *ptr)
+{
+    int e = errno;
+    free(ptr);
+    errno = e;
+}
+
 struct vpkg_check_update_cb_data {
     vpkg::config *config;
 
@@ -347,8 +354,8 @@ static void *vpkg_do_update_thread(void *arg_)
                 for (;;) {
                     char *new_buf = (char *)realloc(buf, bufsz + BUFSIZ + 1);
                     if (new_buf == NULL) {
+                        free_preserve_errno(buf);
                         post_thread_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
-                        free(buf);
                         return NULL;
                     }
 
@@ -356,9 +363,8 @@ static void *vpkg_do_update_thread(void *arg_)
 
                     ssize_t nr = read(stderr_pipefd[0], buf, BUFSIZ);
                     if (nr < 0) {
-                        post_thread_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
-                        free(buf);
-                        return NULL;
+                        free_preserve_errno(buf);
+                        return post_thread_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
                     }
 
                     bufsz += nr;
@@ -372,9 +378,8 @@ static void *vpkg_do_update_thread(void *arg_)
                 while (bufsz && buf[bufsz - 1] == '\n')
                     buf[--bufsz] = '\0';
 
-                post_thread_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
-                free(buf);
-                return NULL;
+                free_preserve_errno(buf);
+                return post_thread_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
             }
 
             FILE *f = fdopen(stdout_pipefd[0], "r");
