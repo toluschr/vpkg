@@ -505,7 +505,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     std::queue<::vpkg_progress> progress;
     std::atomic<unsigned long> packages_done = 0;
     std::atomic<unsigned long> next_package = 0;
-    unsigned long maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
+    unsigned long maxthreads;
     size_t manual_size = packages_to_update->size();
 
     if (sem_init(&sem_data, 0, 1) < 0) {
@@ -520,9 +520,10 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         return -1;
     }
 
+    maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
     if (maxthreads == (unsigned long)-1) {
-        // @todo: handle this
-        return -1;
+        fprintf(stderr, "failed to get core count: %s, executing using two threads.\n", strerror(errno));
+        maxthreads = 1;
     }
 
     pthread_t threads[maxthreads];
