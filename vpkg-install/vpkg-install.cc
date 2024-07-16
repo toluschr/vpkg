@@ -84,27 +84,28 @@ struct vpkg_progress {
     char *error_message;
 };
 
-struct vpkg_do_update_thread_data {
+struct vpkg_do_update_thread_shared_data {
     std::vector<::vpkg::config::iterator> *packages_to_update;
-    struct tqueue *progress_queue;
-
+    struct tqueue progress_queue;
     struct xbps_handle *xhp;
+
     vpkg::config *config;
+    std::atomic<unsigned long> next_package;
+    std::atomic<unsigned long> packages_done;
 
-    std::atomic<unsigned long> *next_package;
-    std::atomic<unsigned long> *packages_done;
+    std::vector<char *> register_xbps;
+    std::vector<char *> install_xbps;
 
-    std::vector<char *> *register_xbps;
-    std::vector<char *> *install_xbps;
+    size_t manual_size;
 
-    sem_t *sem_data;
-    sem_t *sem_notify;
-    // sem_t *sem_continue;
+    sem_t sem_data;
+    sem_t sem_prod_cons;
+};
 
-    sem_t *sem_prod_cons;
+struct vpkg_do_update_thread_data {
+    struct vpkg_do_update_thread_shared_data *shared;
 
     size_t current_offset;
-    size_t manual_size;
     int tid_local;
 
     ::vpkg::config::iterator current;
@@ -156,7 +157,7 @@ static int post_state(struct vpkg_do_update_thread_data *self, enum vpkg_progres
     data->current_offset = self->current_offset;
     data->tid_local = self->tid_local;
 
-    while (tqueue_put_node(self->progress_queue, node) < 0) {
+    while (tqueue_put_node(&self->shared->progress_queue, node) < 0) {
         assert(errno == EINTR);
     }
 
@@ -188,7 +189,7 @@ static void *post_error(struct vpkg_do_update_thread_data *self, const char *fmt
     }
     va_end(va);
 
-    while (tqueue_put_node(self->progress_queue, node) < 0) {
+    while (tqueue_put_node(&self->shared->progress_queue, node) < 0) {
         assert(errno == EINTR);
     }
 
@@ -216,7 +217,7 @@ static int progressfn(void *self_, curl_off_t dltotal, curl_off_t dlnow, curl_of
     data->ulnow = ulnow;
 
     // @todo: handle EOVERFLOW by using a special limiting semaphore
-    while (tqueue_put_node(self->progress_queue, node) < 0) {
+    while (tqueue_put_node(&self->shared->progress_queue, node) < 0) {
         assert(errno == EINTR);
     }
 
@@ -257,20 +258,18 @@ static void *vpkg_do_update_thread(void *arg_)
         int url_length;
         char *url;
 
-        sem_wait(arg->sem_prod_cons);
-        sem_wait(arg->sem_data);
+        sem_wait(&arg->shared->sem_prod_cons);
+        sem_wait(&arg->shared->sem_data);
 
-        arg->current_offset = arg->next_package->fetch_add(1);
-        if (*arg->packages_done >= arg->packages_to_update->size()) {
-            sem_post(arg->sem_data);
-
-            // @todo
-            sem_post(arg->sem_prod_cons);
+        arg->current_offset = arg->shared->next_package.fetch_add(1);
+        if (arg->shared->packages_done >= arg->shared->packages_to_update->size()) {
+            sem_post(&arg->shared->sem_data);
+            sem_post(&arg->shared->sem_prod_cons);
             return NULL;
         }
 
-        arg->current = arg->packages_to_update->at(arg->current_offset);
-        sem_post(arg->sem_data);
+        arg->current = arg->shared->packages_to_update->at(arg->current_offset);
+        sem_post(&arg->shared->sem_data);
 
         post_state(arg, vpkg_progress::INIT);
 
@@ -477,44 +476,44 @@ static void *vpkg_do_update_thread(void *arg_)
                         continue;
                     }
 
-                    auto it = arg->config->find(name);
-                    if (it == arg->config->end()) {
+                    auto it = arg->shared->config->find(name);
+                    if (it == arg->shared->config->end()) {
                         continue;
                     }
 
-                    xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(arg->xhp->pkgdb, name));
+                    xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(arg->shared->xhp->pkgdb, name));
                     if (xpkg != NULL && (!is_xdeb(xpkg) || xbps_vpkg_gtver(xpkg, &it->second) != 1)) {
                         continue;
                     }
 
-                    sem_wait(arg->sem_data);
+                    sem_wait(&arg->shared->sem_data);
 
-                    if (std::find(arg->packages_to_update->begin(), arg->packages_to_update->end(), it) == arg->packages_to_update->end()) {
-                        arg->packages_to_update->push_back(it);
-                        sem_post(arg->sem_prod_cons);
+                    if (std::find(arg->shared->packages_to_update->begin(), arg->shared->packages_to_update->end(), it) == arg->shared->packages_to_update->end()) {
+                        arg->shared->packages_to_update->push_back(it);
+                        sem_post(&arg->shared->sem_prod_cons);
                     }
 
-                    sem_post(arg->sem_data);
+                    sem_post(&arg->shared->sem_data);
                 }
 
                 xbps_object_iterator_release(it);
                 xbps_object_release(binpkgd);
             }
 
-            sem_wait(arg->sem_data);
-            arg->register_xbps->push_back(line);
+            sem_wait(&arg->shared->sem_data);
+            arg->shared->register_xbps.push_back(line);
 
-            if (arg->current_offset < arg->manual_size) {
-                arg->install_xbps->push_back(line);
+            if (arg->current_offset < arg->shared->manual_size) {
+                arg->shared->install_xbps.push_back(line);
             }
 
-            if ((*arg->packages_done += 1) >= arg->packages_to_update->size()) {
-                sem_post(arg->sem_prod_cons);
-                while (tqueue_put_node(arg->progress_queue, NULL) < 0)
+            if ((arg->shared->packages_done += 1) >= arg->shared->packages_to_update->size()) {
+                sem_post(&arg->shared->sem_prod_cons);
+                while (tqueue_put_node(&arg->shared->progress_queue, NULL) < 0)
                     assert(errno == EINTR);
             }
 
-            sem_post(arg->sem_data);
+            sem_post(&arg->shared->sem_data);
             break;
         }
     }
@@ -552,28 +551,29 @@ static int print_bar(struct vpkg_progress *prog)
 static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update)
 {
     int rv;
-    sem_t sem_data;
-    sem_t sem_prod_cons;
-    std::vector<char *> install_xbps;
-    std::vector<char *> register_xbps;
-    struct tqueue progress_queue;
-    std::atomic<unsigned long> packages_done = 0;
-    std::atomic<unsigned long> next_package = 0;
     unsigned long maxthreads;
-    size_t manual_size = packages_to_update->size();
 
-    if (sem_init(&sem_data, 0, 1) < 0) {
+    struct vpkg_do_update_thread_shared_data shared;
+
+    shared.packages_to_update = packages_to_update;
+    shared.manual_size = shared.packages_to_update->size();
+    shared.packages_done = 0;
+    shared.next_package = 0;
+    shared.config = conf;
+    shared.xhp = xhp;
+
+    if (sem_init(&shared.sem_data, 0, 1) < 0) {
         return -1;
     }
 
-    if (sem_init(&sem_prod_cons, 0, manual_size) < 0) {
-        assert(sem_destroy(&sem_data) == 0);
+    if (sem_init(&shared.sem_prod_cons, 0, shared.manual_size) < 0) {
+        assert(sem_destroy(&shared.sem_data) == 0);
         return -1;
     }
 
-    if (tqueue_init(&progress_queue) < 0) {
-        assert(sem_destroy(&sem_data) == 0);
-        assert(sem_destroy(&sem_prod_cons) == 0);
+    if (tqueue_init(&shared.progress_queue) < 0) {
+        assert(sem_destroy(&shared.sem_data) == 0);
+        assert(sem_destroy(&shared.sem_prod_cons) == 0);
         return -1;
     }
 
@@ -588,17 +588,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
 
     unsigned long i;
     for (i = 0; i < maxthreads; i++) {
-        thread_data[i].manual_size = manual_size;
-        thread_data[i].packages_to_update = packages_to_update;
-        thread_data[i].install_xbps = &install_xbps;
-        thread_data[i].config = conf;
-        thread_data[i].register_xbps = &register_xbps;
-        thread_data[i].sem_prod_cons = &sem_prod_cons;
-        thread_data[i].sem_data = &sem_data;
-        thread_data[i].next_package = &next_package;
-        thread_data[i].packages_done = &packages_done;
-        thread_data[i].progress_queue = &progress_queue;
-        thread_data[i].xhp = xhp;
+        thread_data[i].shared = &shared;
         thread_data[i].tid_local = i;
 
         if ((errno = pthread_create(&threads[i], NULL, vpkg_do_update_thread, &thread_data[i]))) {
@@ -616,7 +606,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     bool anyerr = false;
     for (;;) {
         struct tqueue_node *n;
-        while (tqueue_get_node(&progress_queue, &n) < 0) {
+        while (tqueue_get_node(&shared.progress_queue, &n) < 0) {
             assert(errno == EINTR);
         }
 
@@ -696,9 +686,9 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     }
 
     // Adds all packages to repo
-    index_add(xhp, register_xbps.data(), register_xbps.size());
+    index_add(xhp, shared.register_xbps.data(), shared.register_xbps.size());
 
-    for (auto &pathname : install_xbps) {
+    for (auto &pathname : shared.install_xbps) {
         const char *pkgver;
 
         xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(pathname, "/props.plist");
