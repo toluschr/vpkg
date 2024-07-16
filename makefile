@@ -16,6 +16,8 @@ OBJ += vpkg/util.o
 
 OBJ += simdini/ini.o
 
+OBJ += tqueue/tqueue.o
+
 DEP = $(OBJ:%.o=%.d)
 
 .PHONY: all, clean
@@ -24,6 +26,7 @@ all: vpkg-install/vpkg-install vpkg-query/vpkg-query
 vpkg-install/vpkg-install: \
 	vpkg-install/repodata.o \
 	vpkg-install/vpkg-install.o \
+	tqueue/tqueue.o \
 	simdini/ini.o \
 	vpkg/config.o \
 	vpkg/util.o

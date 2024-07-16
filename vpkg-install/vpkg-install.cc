@@ -23,6 +23,7 @@
 #include <xbps.h>
 
 #include "simdini/ini.h"
+#include "tqueue/tqueue.h"
 
 #include "vpkg-install/repodata.h"
 
@@ -30,7 +31,7 @@
 #include "vpkg/util.hh"
 
 #include <atomic>
-#include <queue>
+#include <vector>
 
 static void die(const char *message)
 {
@@ -61,7 +62,7 @@ struct vpkg_check_update_cb_data {
 };
 
 struct vpkg_progress {
-    enum {
+    enum state {
         INIT,
         CURL,
         XDEB,
@@ -73,21 +74,19 @@ struct vpkg_progress {
     size_t current_offset;
     int tid_local;
 
-    union {
-        struct {
-            curl_off_t dltotal;
-            curl_off_t dlnow;
-            curl_off_t ultotal;
-            curl_off_t ulnow;
-        };
-
-        char *error_message;
+    struct {
+        curl_off_t dltotal;
+        curl_off_t dlnow;
+        curl_off_t ultotal;
+        curl_off_t ulnow;
     };
+
+    char *error_message;
 };
 
 struct vpkg_do_update_thread_data {
     std::vector<::vpkg::config::iterator> *packages_to_update;
-    std::queue<::vpkg_progress> *progress;
+    struct tqueue *progress_queue;
 
     struct xbps_handle *xhp;
     vpkg::config *config;
@@ -144,27 +143,83 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
     return 0;
 }
 
-static void push_to_progress_queue(struct vpkg_do_update_thread_data *self, struct vpkg_progress prog)
+static int post_state(struct vpkg_do_update_thread_data *self, enum vpkg_progress::state state)
 {
-    prog.name = self->current->first;
-    prog.current_offset = self->current_offset;
-    prog.tid_local = self->tid_local;
+    auto node = (struct tqueue_node *)malloc(tqueue_sizeof(struct vpkg_progress));
+    if (node == NULL) {
+        return -1;
+    }
 
-    sem_wait(self->sem_data);
-    self->progress->push(prog);
-    sem_post(self->sem_data);
-    sem_post(self->sem_notify);
+    struct vpkg_progress *data = (struct vpkg_progress *)node->data;
+    data->state = state;
+    data->name = self->current->first;
+    data->current_offset = self->current_offset;
+    data->tid_local = self->tid_local;
+
+    while (tqueue_put_node(self->progress_queue, node) < 0) {
+        assert(errno == EINTR);
+    }
+
+    return 0;
 }
 
-static int progressfn(void *arg, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+static void *post_error(struct vpkg_do_update_thread_data *self, const char *fmt, ...)
 {
-    push_to_progress_queue(static_cast<struct vpkg_do_update_thread_data *>(arg), (struct vpkg_progress){
-        .state = vpkg_progress::CURL,
-        .dltotal = dltotal,
-        .dlnow = dlnow,
-        .ultotal = ultotal,
-        .ulnow = ulnow
-    });
+    va_list va;
+
+    auto node = (struct tqueue_node *)malloc(tqueue_sizeof(struct vpkg_progress));
+    if (node == NULL) {
+        perror("ran out of memory during error handling");
+        exit(EXIT_FAILURE);
+        return NULL;
+    }
+
+    struct vpkg_progress *data = (struct vpkg_progress *)node->data;
+    data->name = self->current->first;
+    data->current_offset = self->current_offset;
+    data->tid_local = self->tid_local;
+
+    va_start(va, fmt);
+    if (vasprintf(&data->error_message, fmt, va) < 0) {
+        free(node);
+        perror("ran out of memory during error handling");
+        exit(EXIT_FAILURE);
+        return NULL;
+    }
+    va_end(va);
+
+    while (tqueue_put_node(self->progress_queue, node) < 0) {
+        assert(errno == EINTR);
+    }
+
+    return NULL;
+}
+
+static int progressfn(void *self_, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+    struct vpkg_do_update_thread_data *self = static_cast<struct vpkg_do_update_thread_data *>(self_);
+
+    auto node = (struct tqueue_node *)malloc(tqueue_sizeof(struct vpkg_progress));
+    if (node == NULL) {
+        return -1;
+    }
+
+    struct vpkg_progress *data = (struct vpkg_progress *)node->data;
+    data->name = self->current->first;
+    data->current_offset = self->current_offset;
+    data->tid_local = self->tid_local;
+
+    data->state = vpkg_progress::CURL;
+    data->dltotal = dltotal;
+    data->dlnow = dlnow;
+    data->ultotal = ultotal;
+    data->ulnow = ulnow;
+
+    // @todo: handle EOVERFLOW by using a special limiting semaphore
+    while (tqueue_put_node(self->progress_queue, node) < 0) {
+        assert(errno == EINTR);
+    }
+
     return 0;
 }
 
@@ -191,22 +246,6 @@ static CURLcode download(const char *url, FILE *file, vpkg_do_update_thread_data
     return code;
 }
 
-static void *post_thread_error(struct vpkg_do_update_thread_data *self, const char *fmt, ...)
-{
-    va_list va;
-    va_start(va, fmt);
-
-    char *error_message;
-    if (vasprintf(&error_message, fmt, va) < 0) {
-        va_end(va);
-        push_to_progress_queue(self, (struct vpkg_progress){.state = vpkg_progress::ERROR, .error_message = NULL});
-    }
-
-    va_end(va);
-    push_to_progress_queue(self, (struct vpkg_progress){.state = vpkg_progress::ERROR, .error_message = error_message});
-    return NULL;
-}
-
 static void *vpkg_do_update_thread(void *arg_)
 {
     vpkg_do_update_thread_data *arg = static_cast<vpkg_do_update_thread_data *>(arg_);
@@ -225,15 +264,15 @@ static void *vpkg_do_update_thread(void *arg_)
         if (*arg->packages_done >= arg->packages_to_update->size()) {
             sem_post(arg->sem_data);
 
+            // @todo
             sem_post(arg->sem_prod_cons);
-            sem_post(arg->sem_notify);
             return NULL;
         }
 
         arg->current = arg->packages_to_update->at(arg->current_offset);
         sem_post(arg->sem_data);
 
-        push_to_progress_queue(arg, (struct vpkg_progress){ .state = vpkg_progress::INIT });
+        post_state(arg, vpkg_progress::INIT);
 
         url_length = arg->current->second.url.size();
         url = alloca(sizeof(*url) * (url_length + 1));
@@ -248,7 +287,7 @@ static void *vpkg_do_update_thread(void *arg_)
                                            (int)arg->current->first.size(),
                                            arg->current->first.data());
         if (deb_package_path_length < 0) {
-            return post_thread_error(arg, "failed to format pathname: %s", strerror(errno));
+            return post_error(arg, "failed to format pathname: %s", strerror(errno));
         }
 
         deb_package_path = alloca(sizeof(*deb_package_path) * (deb_package_path_length + 1));
@@ -261,7 +300,7 @@ static void *vpkg_do_update_thread(void *arg_)
                                            (int)arg->current->first.size(),
                                            arg->current->first.data());
         if (deb_package_path_length < 0) {
-            return post_thread_error(arg, "failed to format pathname: %s", strerror(errno));
+            return post_error(arg, "failed to format pathname: %s", strerror(errno));
         }
 
         char *at = strrchr(deb_package_path, '/');
@@ -269,13 +308,13 @@ static void *vpkg_do_update_thread(void *arg_)
 
         *at = '\0';
         if (mkdir(deb_package_path, 0644) < 0 && errno != EEXIST) {
-            return post_thread_error(arg, "failed to create destination file: %s", strerror(errno));
+            return post_error(arg, "failed to create pkgroot: %s", strerror(errno));
         }
 
         *at = '/';
         FILE *f = fopen(deb_package_path, "w");
         if (f == NULL) {
-            return post_thread_error(arg, "failed to open destination file: %s", strerror(errno));
+            return post_error(arg, "failed to open destination file: %s", strerror(errno));
         }
 
         CURLcode code = download(url, f, arg);
@@ -283,14 +322,14 @@ static void *vpkg_do_update_thread(void *arg_)
 
         // download all packages first
         if (code != CURLE_OK) {
-            return post_thread_error(arg, "failed to download package: %s", curl_easy_strerror(code));
+            return post_error(arg, "failed to download package: %s", curl_easy_strerror(code));
         }
 
-        push_to_progress_queue(arg, (struct vpkg_progress){ .state = vpkg_progress::XDEB });
+        post_state(arg, vpkg_progress::XDEB);
 
         int stderr_pipefd[2];
         if (pipe(stderr_pipefd) < 0) {
-            return post_thread_error(arg, "failed to create stderr pipe: %s", strerror(errno));
+            return post_error(arg, "failed to create stderr pipe: %s", strerror(errno));
         }
 
         int stdout_pipefd[2];
@@ -298,7 +337,7 @@ static void *vpkg_do_update_thread(void *arg_)
             close(stderr_pipefd[0]);
             close(stderr_pipefd[1]);
 
-            return post_thread_error(arg, "failed to create stdout pipe: %s", strerror(errno));
+            return post_error(arg, "failed to create stdout pipe: %s", strerror(errno));
         }
 
         std::string version;
@@ -359,7 +398,7 @@ static void *vpkg_do_update_thread(void *arg_)
             close(stderr_pipefd[1]);
 
             if (waitpid(pid, &status, 0) < 0) {
-                return post_thread_error(arg, "failed to wait for child to complete: %s", strerror(errno));
+                return post_error(arg, "failed to wait for child to complete: %s", strerror(errno));
             }
 
             if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
@@ -370,7 +409,7 @@ static void *vpkg_do_update_thread(void *arg_)
                     char *new_buf = (char *)realloc(buf, bufsz + BUFSIZ + 1);
                     if (new_buf == NULL) {
                         free_preserve_errno(buf);
-                        post_thread_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
+                        post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
                         return NULL;
                     }
 
@@ -379,7 +418,7 @@ static void *vpkg_do_update_thread(void *arg_)
                     ssize_t nr = read(stderr_pipefd[0], buf, BUFSIZ);
                     if (nr < 0) {
                         free_preserve_errno(buf);
-                        return post_thread_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
+                        return post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
                     }
 
                     bufsz += nr;
@@ -394,7 +433,7 @@ static void *vpkg_do_update_thread(void *arg_)
                     buf[--bufsz] = '\0';
 
                 free_preserve_errno(buf);
-                return post_thread_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
+                return post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
             }
 
             FILE *f = fdopen(stdout_pipefd[0], "r");
@@ -405,7 +444,7 @@ static void *vpkg_do_update_thread(void *arg_)
 
             ssize_t nread = getline(&line, &len, f);
             if (nread == -1) {
-                return post_thread_error(arg, "failed to parse xdeb output: %s", strerror(errno));
+                return post_error(arg, "failed to parse xdeb output: %s", strerror(errno));
             }
 
             if (nread > 0 && line[nread - 1] == '\n') {
@@ -414,7 +453,7 @@ static void *vpkg_do_update_thread(void *arg_)
 
             fclose(f);
 
-            push_to_progress_queue(arg, (struct vpkg_progress){ .state = vpkg_progress::DONE });
+            post_state(arg, vpkg_progress::DONE);
 
             xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(line, "/props.plist");
 
@@ -471,6 +510,8 @@ static void *vpkg_do_update_thread(void *arg_)
 
             if ((*arg->packages_done += 1) >= arg->packages_to_update->size()) {
                 sem_post(arg->sem_prod_cons);
+                while (tqueue_put_node(arg->progress_queue, NULL) < 0)
+                    assert(errno == EINTR);
             }
 
             sem_post(arg->sem_data);
@@ -478,8 +519,6 @@ static void *vpkg_do_update_thread(void *arg_)
         }
     }
 
-    // Post "done" after full successful download
-    sem_post(arg->sem_notify);
     return NULL;
 }
 
@@ -500,11 +539,7 @@ static int print_bar(struct vpkg_progress *prog)
         printf("%.*s finished\n", (int)prog->name.size(), prog->name.data());
         break;
     case vpkg_progress::ERROR:
-        if (prog->error_message) {
-            printf("%.*s \033[31;1merror\033[0m %s\n", (int)prog->name.size(), prog->name.data(), prog->error_message);
-        } else {
-            printf("%.*s \033[31;1merror\033[0m invalid error\n", (int)prog->name.size(), prog->name.data());
-        }
+        printf("%.*s \033[31;1merror\033[0m %s\n", (int)prog->name.size(), prog->name.data(), prog->error_message);
         break;
     default:
         printf("\n");
@@ -518,11 +553,10 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
 {
     int rv;
     sem_t sem_data;
-    sem_t sem_notify;
     sem_t sem_prod_cons;
     std::vector<char *> install_xbps;
     std::vector<char *> register_xbps;
-    std::queue<::vpkg_progress> progress;
+    struct tqueue progress_queue;
     std::atomic<unsigned long> packages_done = 0;
     std::atomic<unsigned long> next_package = 0;
     unsigned long maxthreads;
@@ -532,11 +566,14 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         return -1;
     }
 
-    if (sem_init(&sem_notify, 0, 0) < 0) {
+    if (sem_init(&sem_prod_cons, 0, manual_size) < 0) {
+        assert(sem_destroy(&sem_data) == 0);
         return -1;
     }
 
-    if (sem_init(&sem_prod_cons, 0, manual_size) < 0) {
+    if (tqueue_init(&progress_queue) < 0) {
+        assert(sem_destroy(&sem_data) == 0);
+        assert(sem_destroy(&sem_prod_cons) == 0);
         return -1;
     }
 
@@ -557,11 +594,10 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         thread_data[i].config = conf;
         thread_data[i].register_xbps = &register_xbps;
         thread_data[i].sem_prod_cons = &sem_prod_cons;
-        thread_data[i].sem_notify = &sem_notify;
         thread_data[i].sem_data = &sem_data;
         thread_data[i].next_package = &next_package;
         thread_data[i].packages_done = &packages_done;
-        thread_data[i].progress = &progress;
+        thread_data[i].progress_queue = &progress_queue;
         thread_data[i].xhp = xhp;
         thread_data[i].tid_local = i;
 
@@ -579,75 +615,68 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
 
     bool anyerr = false;
     for (;;) {
-        sem_wait(&sem_notify);
+        struct tqueue_node *n;
+        while (tqueue_get_node(&progress_queue, &n) < 0) {
+            assert(errno == EINTR);
+        }
+
+        if (n == NULL) {
+            break;
+        }
+
+        struct vpkg_progress data = *(struct vpkg_progress *)n->data;
+        free(n);
 
         if (nrunning) {
             printf("\033[%zuA", nrunning);
         }
 
-        for (;;) {
-            sem_trywait(&sem_notify);
+        switch (data.state) {
+        case vpkg_progress::DONE: {
+            assert(nrunning > 0);
 
-            sem_wait(&sem_data);
-            if (progress.size() == 0) {
-                sem_post(&sem_data);
-                break;
-            }
+            int tid0 = progress_display[base_offset % i].tid_local;
+            int tid1 = data.tid_local;
 
-            ::vpkg_progress prog = progress.front();
-            progress.pop();
-            sem_post(&sem_data);
+            progress_display[tid_to_offset[tid1]] = progress_display[base_offset % i];
+            progress_display[base_offset % i] = data;
 
-            switch (prog.state) {
-            case vpkg_progress::DONE: {
-                assert(nrunning > 0);
+            tid_to_offset[tid0] = tid_to_offset[tid1];
+            tid_to_offset[tid1] = base_offset % i;
 
-                int tid0 = progress_display[base_offset % i].tid_local;
-                int tid1 = prog.tid_local;
+            print_bar(&data);
+            base_offset++, nrunning--;
+            break;
+        }
+        case vpkg_progress::INIT: {
+            assert(nrunning < i);
 
-                progress_display[tid_to_offset[tid1]] = progress_display[base_offset % i];
-                progress_display[base_offset % i] = prog;
+            tid_to_offset[data.tid_local] = (base_offset + nrunning) % i;
+            progress_display[tid_to_offset[data.tid_local]] = data;
+            nrunning++;
+            break;
+        }
+        case vpkg_progress::ERROR: {
+            assert(nrunning > 0);
 
-                tid_to_offset[tid0] = tid_to_offset[tid1];
-                tid_to_offset[tid1] = base_offset % i;
-
-                print_bar(&prog);
-                base_offset++, nrunning--;
-                break;
-            }
-            case vpkg_progress::INIT: {
-                assert(nrunning < i);
-
-                tid_to_offset[prog.tid_local] = (base_offset + nrunning) % i;
-                progress_display[tid_to_offset[prog.tid_local]] = prog;
-                nrunning++;
-                break;
-            }
-            case vpkg_progress::ERROR: {
-                assert(nrunning > 0);
-
-                progress_display[tid_to_offset[prog.tid_local]] = progress_display[(base_offset + nrunning - 1) % i];
-                progress_display[(base_offset + nrunning - 1) % i] = prog;
-                break;
-            }
-            default: {
-                progress_display[tid_to_offset[prog.tid_local]] = prog;
-                break;
-            }
-            }
+            progress_display[tid_to_offset[data.tid_local]] = progress_display[(base_offset + nrunning - 1) % i];
+            progress_display[(base_offset + nrunning - 1) % i] = data;
+            break;
+        }
+        default: {
+            progress_display[tid_to_offset[data.tid_local]] = data;
+            break;
+        }
         }
 
         for (size_t j = base_offset; j < base_offset + nrunning; j++) {
             if (print_bar(&progress_display[j % i]) == vpkg_progress::ERROR) {
-                if (progress_display[j % i].error_message) {
-                    free(progress_display[j % i].error_message);
-                }
-
+                free(progress_display[j % i].error_message);
                 anyerr = true;
             }
         }
 
-        if (anyerr || packages_done >= packages_to_update->size()) {
+        if (anyerr) {
             break;
         }
     }
