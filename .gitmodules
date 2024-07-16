@@ -1,3 +1,7 @@
 [submodule "simdini"]
 	path = simdini
 	url = https://github.com/toluschr/simdini.git
+
+[submodule "tqueue"]
+	path = tqueue
+	url = https://github.com/toluschr/tqueue.git
