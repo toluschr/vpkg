@@ -176,6 +176,7 @@ static void *post_error(struct vpkg_do_update_thread_data *self, const char *fmt
     }
 
     struct vpkg_progress *data = (struct vpkg_progress *)node->data;
+    data->state = vpkg_progress::ERROR;
     data->name = self->current->first;
     data->current_offset = self->current_offset;
     data->tid_local = self->tid_local;
@@ -431,8 +432,9 @@ static void *vpkg_do_update_thread(void *arg_)
                 while (bufsz && buf[bufsz - 1] == '\n')
                     buf[--bufsz] = '\0';
 
-                free_preserve_errno(buf);
-                return post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
+                post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
+                free(buf);
+                return NULL;
             }
 
             FILE *f = fdopen(stdout_pipefd[0], "r");
