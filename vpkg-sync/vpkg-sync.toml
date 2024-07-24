@@ -76,8 +76,8 @@ name = "libclang19-dev"
 [sources.llvm19.packages.libclang-common-19-dev]
 name = "clang19-headers"
 
-[packages.code]
+[sources.code]
 url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 
-[packages.code-insiders]
+[sources.code-insiders]
 url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"
