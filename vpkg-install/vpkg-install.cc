@@ -584,7 +584,7 @@ static int state_cb(const struct xbps_state_cb_data *xscb, void *user_)
 
 static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update)
 {
-    int rv = -1;
+    int rv = 0;
     unsigned long maxthreads;
 
     struct vpkg_do_update_thread_shared_data shared;
@@ -613,14 +613,17 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     shared.idxstage = xbps_dictionary_create();
 
     if (sem_init(&shared.sem_data, 0, 1) < 0) {
+        rv = errno;
         goto out_close_repo;
     }
 
     if (sem_init(&shared.sem_prod_cons, 0, shared.manual_size) < 0) {
+        rv = errno;
         goto out_destroy_sem_data;
     }
 
     if (tqueue_init(&shared.progress_queue) < 0) {
+        rv = errno;
         goto out_destroy_sem_prod_cons;
     }
 
@@ -759,6 +762,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
                 // ignore already installed "packages may be updated"
                 fprintf(stderr, "%s: Already installed\n", pkgver);
                 xbps_object_release(binpkgd);
+                rv = 0;
                 continue;
             case ENOENT:
                 fprintf(stderr, "%s: Not found in repository pool\n", pkgver);
@@ -783,29 +787,35 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
             goto out_destroy_queue;
         }
 
-        if (xhp->transd == NULL) {
+        int nchanged = 0;
+        if (xhp->transd) {
+            xbps_object_t obj;
+            xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "packages");
+
+            while ((obj = xbps_object_iterator_next(it)) != NULL) {
+                if (nchanged++ == 0) {
+                    printf("Summary of changes:\n");
+                }
+
+                xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
+                const char *pkgname;
+                const char *pkgver;
+
+                assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname));
+                assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver));
+
+                pkgver = xbps_pkg_version(pkgver);
+
+                printf("%s -> %s\n", pkgname, pkgver);
+            }
+
+            xbps_object_iterator_release(it);
+        }
+
+        if (nchanged == 0) {
             fprintf(stderr, "Nothing to do.\n");
-            return 0;
+            goto out_destroy_queue;
         }
-
-        xbps_object_t obj;
-        xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "packages");
-
-        printf("Summary of changes:\n");
-        while ((obj = xbps_object_iterator_next(it)) != NULL) {
-            xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
-            const char *pkgname;
-            const char *pkgver;
-
-            assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname));
-            assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver));
-
-            pkgver = xbps_pkg_version(pkgver);
-
-            printf("%s -> %s\n", pkgname, pkgver);
-        }
-
-        xbps_object_iterator_release(it);
 
         rv = yes_no_prompt() ? 0 : -1;
         if (rv != 0) {
