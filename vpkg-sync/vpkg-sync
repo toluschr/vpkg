@@ -392,10 +392,10 @@ DEBIAN_BINARY = f"binary-{machine}"
 
 # @todo: Don't output in critical section. Use queue.
 data_lock = threading.Lock()
-vpkg_config_file = open("/etc/vpkg.ini", "w+")
+vpkg_config_file = open("/etc/vpkg-install.ini", "w+")
 
 if __name__ == '__main__':
-    with open("vpkg-sync.toml", "rb") as config_file:
+    with open("/etc/vpkg-sync.toml", "rb") as config_file:
         p = tomllib.load(config_file)
 
     os.environ["XDEB_SHLIBS"] = "/var/lib/vpkg/shlibs"
