@@ -1,3 +1,5 @@
+DESTDIR = /usr/local
+
 CC = gcc
 CC_FLAGS = -I. -Wall -march=native -Og -ggdb
 
@@ -20,7 +22,8 @@ OBJ += tqueue/tqueue.o
 
 DEP = $(OBJ:%.o=%.d)
 
-.PHONY: all, clean
+.PHONY: all, clean, install
+
 all: vpkg-install/vpkg-install vpkg-query/vpkg-query
 
 vpkg-install/vpkg-install: \
@@ -40,7 +43,11 @@ vpkg-query/vpkg-query: \
 	$(CXX) $(LD_FLAGS) $^ -o $@
 
 clean:
-	-rm -f $(OBJ) $(DEP)
+	-rm -f vpkg-install/vpkg-install vpkg-query/vpkg-query $(OBJ) $(DEP)
+
+install:
+	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
+	install -m755 -t $(DESTDIR)/bin vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
 
 %.o: %.c
 	$(CC) $(CC_FLAGS) -c -MMD $< -o $@
