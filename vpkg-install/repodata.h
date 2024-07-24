@@ -16,7 +16,11 @@ bool repodata_commit(struct xbps_handle *xhp, const char *repodir,
                             xbps_dictionary_t idx, xbps_dictionary_t meta,
                             xbps_dictionary_t stage, const char *compression);
 
-int index_add(struct xbps_handle *xhp, char **argv, int nargs);
+xbps_dictionary_t repodata_add(struct xbps_handle *xhp, const char *pathname,
+                               xbps_dictionary_t idx, xbps_dictionary_t meta,
+                               xbps_dictionary_t stage);
+
+// int index_add(struct xbps_handle *xhp, struct xbps_repo *repo, char **argv, int nargs);
 
 #ifdef __cplusplus
 }

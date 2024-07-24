@@ -274,111 +274,61 @@ bool repodata_commit(struct xbps_handle *xhp, const char *repodir,
     return rv;
 }
 
-int index_add(struct xbps_handle *xhp, char **argv, int nargs)
+xbps_dictionary_t repodata_add(struct xbps_handle *xhp, const char *pathname,
+                                      xbps_dictionary_t idx, xbps_dictionary_t meta,
+                                      xbps_dictionary_t stage)
 {
-    xbps_dictionary_t idx, idxmeta, idxstage;
+    // const char *filename;
+    const char *architecture;
+    const char *pkgver;
+    char sha256[XBPS_SHA256_SIZE];
+    char pkgname[XBPS_NAME_SIZE];
+    xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(pathname, "/props.plist");
 
-    // Create repo
-    // @error: ignore
-    xbps_repo_store(xhp, VPKG_BINPKGS);
-
-    // open repo
-    struct xbps_repo *repo = xbps_repo_public_open(xhp, VPKG_BINPKGS);
-
-    if (repo) {
-        idx = xbps_dictionary_copy_mutable(repo->idx);
-        idxmeta = xbps_dictionary_copy_mutable(repo->idxmeta);
-    } else {
-        idx = xbps_dictionary_create();
-        idxmeta = NULL;
-    }
-
-    struct xbps_repo *stage = xbps_repo_stage_open(xhp, VPKG_BINPKGS);
-    if (stage == NULL && errno != ENOENT) {
-        fprintf(stderr, "failed to open stage\n");
-        return false;
-    }
-
-    if (stage) {
-        idxstage = xbps_dictionary_copy_mutable(stage->idx);
-    } else {
-        idxstage = xbps_dictionary_create();
-    }
-
-    for (int i = 0; i < nargs; i++) {
-        const char *pathname = argv[i];
-        // const char *filename;
-        const char *architecture;
-        const char *pkgver;
-        char sha256[XBPS_SHA256_SIZE];
-        char pkgname[XBPS_NAME_SIZE];
-        xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(pathname, "/props.plist");
-
-        if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "architecture", &architecture)) {
-            fprintf(stderr, "architecture unset\n");
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
-        if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "pkgver", &pkgver)) {
-            fprintf(stderr, "pkgver unset\n");
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
-        if (!xbps_pkg_arch_match(xhp, architecture, NULL)) {
-            fprintf(stderr, "arch invalid\n");
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
-        if (!xbps_pkg_name(pkgname, sizeof(pkgname), pkgver)) {
-            fprintf(stderr, "pkgver invalid\n");
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
-        if (!xbps_file_sha256(sha256, sizeof(sha256), pathname)) {
-            fprintf(stderr, "sha256 invalid\n");
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
-        if (!xbps_dictionary_set_cstring(binpkgd, "filename-sha256", sha256)) {
-            fprintf(stderr, "filename-sha256 invalid\n");
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
-        xbps_dictionary_remove(binpkgd, "pkgname");
-        xbps_dictionary_remove(binpkgd, "version");
-        xbps_dictionary_remove(binpkgd, "packaged-with");
-
-        if (!xbps_dictionary_set(idxstage, pkgname, binpkgd)) {
-            xbps_object_release(binpkgd);
-            continue;
-        }
-
+    if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "architecture", &architecture)) {
+        fprintf(stderr, "architecture unset\n");
         xbps_object_release(binpkgd);
+        return NULL;
     }
 
-    if (!repodata_commit(xhp, VPKG_BINPKGS, idx, idxmeta, idxstage, NULL)) {
-        // @todo: implement
-        goto out;
+    if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "pkgver", &pkgver)) {
+        fprintf(stderr, "pkgver unset\n");
+        xbps_object_release(binpkgd);
+        return NULL;
     }
 
-out:
-    xbps_object_release(idx);
-    xbps_object_release(idxstage);
+    if (!xbps_pkg_arch_match(xhp, architecture, NULL)) {
+        fprintf(stderr, "arch invalid\n");
+        xbps_object_release(binpkgd);
+        return NULL;
+    }
 
-    if (idxmeta)
-        xbps_object_release(idxmeta);
+    if (!xbps_pkg_name(pkgname, sizeof(pkgname), pkgver)) {
+        fprintf(stderr, "pkgver invalid\n");
+        xbps_object_release(binpkgd);
+        return NULL;
+    }
 
-    if (repo)
-        xbps_repo_close(repo);
+    if (!xbps_file_sha256(sha256, sizeof(sha256), pathname)) {
+        fprintf(stderr, "sha256 invalid\n");
+        xbps_object_release(binpkgd);
+        return NULL;
+    }
 
-    if (stage)
-        xbps_repo_close(stage);
+    if (!xbps_dictionary_set_cstring(binpkgd, "filename-sha256", sha256)) {
+        fprintf(stderr, "filename-sha256 invalid\n");
+        xbps_object_release(binpkgd);
+        return NULL;
+    }
 
-    return 0;
+    xbps_dictionary_remove(binpkgd, "pkgname");
+    xbps_dictionary_remove(binpkgd, "version");
+    xbps_dictionary_remove(binpkgd, "packaged-with");
+
+    if (!xbps_dictionary_set(stage, pkgname, binpkgd)) {
+        xbps_object_release(binpkgd);
+        return NULL;
+    }
+
+    return binpkgd;
 }

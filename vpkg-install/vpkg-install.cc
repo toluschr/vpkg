@@ -88,18 +88,21 @@ struct vpkg_do_update_thread_shared_data {
     std::vector<::vpkg::config::iterator> *packages_to_update;
     struct tqueue progress_queue;
     struct xbps_handle *xhp;
+    struct xbps_repo *repo;
 
     vpkg::config *config;
     std::atomic<unsigned long> next_package;
     std::atomic<unsigned long> packages_done;
 
-    std::vector<char *> register_xbps;
-    std::vector<char *> install_xbps;
+    std::vector<xbps_dictionary_t> install_xbps;
+    bool force;
 
     size_t manual_size;
 
     sem_t sem_data;
     sem_t sem_prod_cons;
+
+    xbps_dictionary_t idx, idxmeta, idxstage;
 };
 
 struct vpkg_do_update_thread_data {
@@ -239,7 +242,6 @@ static CURLcode download(const char *url, FILE *file, vpkg_do_update_thread_data
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressfn) : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_XFERINFODATA, arg) : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) : code;
-    // code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L) : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.8.0") : code;
     code = (code == CURLE_OK) ? curl_easy_setopt(curl, CURLOPT_WRITEDATA, file) : code;
     code = (code == CURLE_OK) ? curl_easy_perform(curl) : code;
@@ -253,11 +255,7 @@ static void *vpkg_do_update_thread(void *arg_)
     vpkg_do_update_thread_data *arg = static_cast<vpkg_do_update_thread_data *>(arg_);
 
     for (;;) {
-        int deb_package_path_length;
-        char *deb_package_path;
-
-        int url_length;
-        char *url;
+        xbps_dictionary_t binpkgd;
 
         sem_wait(&arg->shared->sem_prod_cons);
         sem_wait(&arg->shared->sem_data);
@@ -270,254 +268,279 @@ static void *vpkg_do_update_thread(void *arg_)
         }
 
         arg->current = arg->shared->packages_to_update->at(arg->current_offset);
+
+        char pkgname[arg->current->first.size() + 1];
+        memcpy(pkgname, arg->current->first.data(), arg->current->first.size());
+        pkgname[arg->current->first.size()] = '\0';
+
+        binpkgd = xbps_repo_get_pkg(arg->shared->repo, pkgname);
+
+        // If the package was found and a newer version is available, re-download.
+        if (binpkgd != NULL && xbps_vpkg_gtver(binpkgd, &arg->current->second) == 1) {
+            binpkgd = NULL;
+        }
+
         sem_post(&arg->shared->sem_data);
 
-        post_state(arg, vpkg_progress::INIT);
+        // If the package does not exist, download and convert it.
+        if (!binpkgd) {
+            int deb_package_path_length, url_length;
+            char *deb_package_path, *url;
 
-        url_length = arg->current->second.url.size();
-        url = alloca(sizeof(*url) * (url_length + 1));
-        memcpy(url, arg->current->second.url.data(), url_length);
-        url[url_length] = '\0';
+            post_state(arg, vpkg_progress::INIT);
 
-        deb_package_path_length = snprintf(NULL,
-                                           0,
-                                           "%s/%d/%.*s.deb",
-                                           VPKG_TEMPDIR,
-                                           gettid(),
-                                           (int)arg->current->first.size(),
-                                           arg->current->first.data());
-        if (deb_package_path_length < 0) {
-            return post_error(arg, "failed to format pathname: %s", strerror(errno));
-        }
+            url_length = arg->current->second.url.size();
+            url = alloca(sizeof(*url) * (url_length + 1));
+            memcpy(url, arg->current->second.url.data(), url_length);
+            url[url_length] = '\0';
 
-        deb_package_path = alloca(sizeof(*deb_package_path) * (deb_package_path_length + 1));
-
-        deb_package_path_length = snprintf(deb_package_path,
-                                           deb_package_path_length + 1,
-                                           "%s/%d/%.*s.deb",
-                                           VPKG_TEMPDIR,
-                                           gettid(),
-                                           (int)arg->current->first.size(),
-                                           arg->current->first.data());
-        if (deb_package_path_length < 0) {
-            return post_error(arg, "failed to format pathname: %s", strerror(errno));
-        }
-
-        char *at = strrchr(deb_package_path, '/');
-        assert(at);
-
-        *at = '\0';
-        if (mkdir(deb_package_path, 0644) < 0 && errno != EEXIST) {
-            return post_error(arg, "failed to create pkgroot: %s", strerror(errno));
-        }
-
-        *at = '/';
-        FILE *f = fopen(deb_package_path, "w");
-        if (f == NULL) {
-            return post_error(arg, "failed to open destination file: %s", strerror(errno));
-        }
-
-        CURLcode code = download(url, f, arg);
-        fclose(f);
-
-        // download all packages first
-        if (code != CURLE_OK) {
-            return post_error(arg, "failed to download package: %s", curl_easy_strerror(code));
-        }
-
-        post_state(arg, vpkg_progress::XDEB);
-
-        int stderr_pipefd[2];
-        if (pipe(stderr_pipefd) < 0) {
-            return post_error(arg, "failed to create stderr pipe: %s", strerror(errno));
-        }
-
-        int stdout_pipefd[2];
-        if (pipe(stdout_pipefd) < 0) {
-            close(stderr_pipefd[0]);
-            close(stderr_pipefd[1]);
-
-            return post_error(arg, "failed to create stdout pipe: %s", strerror(errno));
-        }
-
-        std::string version;
-        std::string name;
-        std::string deps;
-        std::string not_deps;
-
-        pid_t pid = fork();
-        switch (pid) {
-            int status;
-
-        case -1:
-            perror("fork");
-            break;
-        case 0:
-            if (dup2(stderr_pipefd[1], STDERR_FILENO) < 0) {
-                exit(EXIT_FAILURE);
+            deb_package_path_length = snprintf(NULL,
+                                               0,
+                                               "%s/%d/%.*s.deb",
+                                               VPKG_TEMPDIR,
+                                               gettid(),
+                                               (int)arg->current->first.size(),
+                                               arg->current->first.data());
+            if (deb_package_path_length < 0) {
+                return post_error(arg, "failed to format pathname: %s", strerror(errno));
             }
 
-            if (dup2(stdout_pipefd[1], STDOUT_FILENO) < 0) {
-                // @todo message
-                exit(EXIT_FAILURE);
+            deb_package_path = alloca(sizeof(*deb_package_path) * (deb_package_path_length + 1));
+
+            deb_package_path_length = snprintf(deb_package_path,
+                                               deb_package_path_length + 1,
+                                               "%s/%d/%.*s.deb",
+                                               VPKG_TEMPDIR,
+                                               gettid(),
+                                               (int)arg->current->first.size(),
+                                               arg->current->first.data());
+            if (deb_package_path_length < 0) {
+                return post_error(arg, "failed to format pathname: %s", strerror(errno));
             }
+
+            char *at = strrchr(deb_package_path, '/');
+            assert(at);
 
             *at = '\0';
-            if (setenv("XDEB_PKGROOT", deb_package_path, 1) < 0) {
-                fprintf(stderr, "failed to set pkgroot\n");
-                exit(EXIT_FAILURE);
+            if (mkdir(deb_package_path, 0644) < 0 && errno != EEXIST) {
+                return post_error(arg, "failed to create pkgroot: %s", strerror(errno));
             }
+
             *at = '/';
-
-            if (setenv("XDEB_BINPKGS", VPKG_BINPKGS, 1) < 0) {
-                fprintf(stderr, "failed to set binpkgs\n");
-                exit(EXIT_FAILURE);
+            FILE *f = fopen(deb_package_path, "w");
+            if (f == NULL) {
+                return post_error(arg, "failed to open destination file: %s", strerror(errno));
             }
 
-            // @todo: handle
-            close(stdout_pipefd[0]);
-            close(stderr_pipefd[0]);
-
-            not_deps = "--not-deps=";
-            not_deps += arg->current->second.not_deps;
-
-            deps = "--deps=";
-            deps += arg->current->second.deps;
-
-            name = "--name=";
-            name += arg->current->first;
-
-            version = "--version=";
-            version += arg->current->second.version;
-
-            execlp("xdeb", "xdeb", "-edR", not_deps.c_str(), deps.c_str(), name.c_str(), version.c_str(), "--", deb_package_path, NULL);
-            break;
-        default:
-            // ignore error, @todo: handle EINTR
-            close(stdout_pipefd[1]);
-            close(stderr_pipefd[1]);
-
-            if (waitpid(pid, &status, 0) < 0) {
-                return post_error(arg, "failed to wait for child to complete: %s", strerror(errno));
-            }
-
-            if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
-                char *buf = NULL;
-                size_t bufsz = 0;
-
-                for (;;) {
-                    char *new_buf = (char *)realloc(buf, bufsz + BUFSIZ + 1);
-                    if (new_buf == NULL) {
-                        free_preserve_errno(buf);
-                        post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
-                        return NULL;
-                    }
-
-                    buf = new_buf;
-
-                    ssize_t nr = read(stderr_pipefd[0], buf, BUFSIZ);
-                    if (nr < 0) {
-                        free_preserve_errno(buf);
-                        return post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
-                    }
-
-                    bufsz += nr;
-                    buf[bufsz] = '\0';
-
-                    if (nr != BUFSIZ) {
-                        break;
-                    }
-                }
-
-                while (bufsz && buf[bufsz - 1] == '\n')
-                    buf[--bufsz] = '\0';
-
-                post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
-                free(buf);
-                return NULL;
-            }
-
-            FILE *f = fdopen(stdout_pipefd[0], "r");
-            // @todo: inval ignored
-
-            char *line = NULL;
-            size_t len = 0;
-
-            ssize_t nread = getline(&line, &len, f);
-            if (nread == -1) {
-                return post_error(arg, "failed to parse xdeb output: %s", strerror(errno));
-            }
-
-            if (nread > 0 && line[nread - 1] == '\n') {
-                line[--nread] = '\0';
-            }
-
+            CURLcode code = download(url, f, arg);
             fclose(f);
 
-            post_state(arg, vpkg_progress::DONE);
+            // download all packages first
+            if (code != CURLE_OK) {
+                return post_error(arg, "failed to download package: %s", curl_easy_strerror(code));
+            }
 
-            xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(line, "/props.plist");
+            post_state(arg, vpkg_progress::XDEB);
 
-            xbps_object_t obj = xbps_dictionary_get(binpkgd, "run_depends");
-            if (obj != NULL) {
-                xbps_array_t arr = static_cast<xbps_array_t>(obj);
-                xbps_object_iterator_t it = xbps_array_iterator(arr);
+            int stderr_pipefd[2];
+            if (pipe(stderr_pipefd) < 0) {
+                return post_error(arg, "failed to create stderr pipe: %s", strerror(errno));
+            }
 
-                while ((obj = xbps_object_iterator_next(it)) != NULL) {
-                    xbps_string_t str = static_cast<xbps_string_t>(obj);
-                    const char *dep = xbps_string_cstring_nocopy(str);
+            int stdout_pipefd[2];
+            if (pipe(stdout_pipefd) < 0) {
+                close(stderr_pipefd[0]);
+                close(stderr_pipefd[1]);
 
-                    if (dep == NULL) {
-                        continue;
-                    }
+                return post_error(arg, "failed to create stdout pipe: %s", strerror(errno));
+            }
 
-                    size_t dep_len = strlen(dep);
-                    char name[dep_len + 1];
+            std::string version;
+            std::string name;
+            std::string deps;
+            std::string not_deps;
 
-                    if (!xbps_pkgpattern_name(name, dep_len, dep)) {
-                        continue;
-                    }
+            pid_t pid = fork();
+            switch (pid) {
+                int status;
 
-                    auto it = arg->shared->config->find(name);
-                    if (it == arg->shared->config->end()) {
-                        continue;
-                    }
-
-                    xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(arg->shared->xhp->pkgdb, name));
-                    if (xpkg != NULL && (!is_xdeb(xpkg) || xbps_vpkg_gtver(xpkg, &it->second) != 1)) {
-                        continue;
-                    }
-
-                    sem_wait(&arg->shared->sem_data);
-
-                    if (std::find(arg->shared->packages_to_update->begin(), arg->shared->packages_to_update->end(), it) == arg->shared->packages_to_update->end()) {
-                        arg->shared->packages_to_update->push_back(it);
-                        sem_post(&arg->shared->sem_prod_cons);
-                    }
-
-                    sem_post(&arg->shared->sem_data);
+            case -1:
+                return post_error(arg, "failed to fork: %s", strerror(errno));
+            case 0:
+                if (dup2(stderr_pipefd[1], STDERR_FILENO) < 0) {
+                    // @todo message
+                    exit(EXIT_FAILURE);
                 }
 
-                xbps_object_iterator_release(it);
-                xbps_object_release(binpkgd);
+                if (dup2(stdout_pipefd[1], STDOUT_FILENO) < 0) {
+                    // @todo message
+                    exit(EXIT_FAILURE);
+                }
+
+                *at = '\0';
+                if (setenv("XDEB_PKGROOT", deb_package_path, 1) < 0) {
+                    fprintf(stderr, "failed to set pkgroot\n");
+                    exit(EXIT_FAILURE);
+                }
+                *at = '/';
+
+                if (setenv("XDEB_BINPKGS", VPKG_BINPKGS, 1) < 0) {
+                    fprintf(stderr, "failed to set binpkgs\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                // @todo: handle
+                close(stdout_pipefd[0]);
+                close(stderr_pipefd[0]);
+
+                not_deps = "--not-deps=";
+                not_deps += arg->current->second.not_deps;
+
+                deps = "--deps=";
+                deps += arg->current->second.deps;
+
+                name = "--name=";
+                name += arg->current->first;
+
+                version = "--version=";
+                version += arg->current->second.version;
+
+                execlp("xdeb", "xdeb", "-edRL", not_deps.c_str(), deps.c_str(), name.c_str(), version.c_str(), "--", deb_package_path, NULL);
+                exit(EXIT_FAILURE);
+
+                break;
+
+            default:
+                // ignore error, @todo: handle EINTR
+                close(stdout_pipefd[1]);
+                close(stderr_pipefd[1]);
+
+                if (waitpid(pid, &status, 0) < 0) {
+                    return post_error(arg, "failed to wait for child to complete: %s", strerror(errno));
+                }
+
+                if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
+                    char *buf = NULL;
+                    size_t bufsz = 0;
+
+                    for (;;) {
+                        char *new_buf = (char *)realloc(buf, bufsz + BUFSIZ + 1);
+                        if (new_buf == NULL) {
+                            free_preserve_errno(buf);
+                            return post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
+                        }
+
+                        buf = new_buf;
+
+                        ssize_t nr = read(stderr_pipefd[0], buf, BUFSIZ);
+                        if (nr < 0) {
+                            free_preserve_errno(buf);
+                            return post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
+                        }
+
+                        bufsz += nr;
+                        buf[bufsz] = '\0';
+
+                        if (nr != BUFSIZ) {
+                            break;
+                        }
+                    }
+
+                    while (bufsz && buf[bufsz - 1] == '\n') {
+                        buf[--bufsz] = '\0';
+                    }
+
+                    post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
+                    free(buf);
+                    return NULL;
+                }
+
+                FILE *f = fdopen(stdout_pipefd[0], "r");
+                // @todo: inval ignored
+
+                char *line = NULL;
+                size_t len = 0;
+
+                ssize_t nread = getline(&line, &len, f);
+                if (nread == -1) {
+                    return post_error(arg, "failed to parse xdeb output: %s", strerror(errno));
+                }
+
+                if (nread > 0 && line[nread - 1] == '\n') {
+                    line[--nread] = '\0';
+                }
+
+                fclose(f);
+
+                post_state(arg, vpkg_progress::DONE);
+
+                sem_wait(&arg->shared->sem_data);
+                binpkgd = repodata_add(arg->shared->xhp, line, arg->shared->idx, arg->shared->idxmeta, arg->shared->idxstage);
+                sem_post(&arg->shared->sem_data);
+
+                free(line);
             }
-
-            sem_wait(&arg->shared->sem_data);
-            arg->shared->register_xbps.push_back(line);
-
-            if (arg->current_offset < arg->shared->manual_size) {
-                arg->shared->install_xbps.push_back(line);
-            }
-
-            if ((arg->shared->packages_done += 1) >= arg->shared->packages_to_update->size()) {
-                sem_post(&arg->shared->sem_prod_cons);
-                while (tqueue_put_node(&arg->shared->progress_queue, NULL) < 0)
-                    assert(errno == EINTR);
-            }
-
-            sem_post(&arg->shared->sem_data);
-            break;
+        } else {
+            xbps_object_retain(binpkgd);
         }
+
+        xbps_object_t obj = xbps_dictionary_get(binpkgd, "run_depends");
+        if (obj != NULL) {
+            xbps_array_t arr = static_cast<xbps_array_t>(obj);
+            xbps_object_iterator_t it = xbps_array_iterator(arr);
+
+            while ((obj = xbps_object_iterator_next(it)) != NULL) {
+                xbps_string_t str = static_cast<xbps_string_t>(obj);
+                const char *dep = xbps_string_cstring_nocopy(str);
+
+                if (dep == NULL) {
+                    continue;
+                }
+
+                size_t dep_len = strlen(dep);
+                char name[dep_len + 1];
+
+                if (!xbps_pkgpattern_name(name, dep_len, dep)) {
+                    continue;
+                }
+
+                auto it = arg->shared->config->find(name);
+                if (it == arg->shared->config->end()) {
+                    continue;
+                }
+
+                xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(arg->shared->xhp->pkgdb, name));
+                if (xpkg != NULL && (!is_xdeb(xpkg) || xbps_vpkg_gtver(xpkg, &it->second) != 1)) {
+                    continue;
+                }
+
+                sem_wait(&arg->shared->sem_data);
+
+                if (std::find(arg->shared->packages_to_update->begin(), arg->shared->packages_to_update->end(), it) == arg->shared->packages_to_update->end()) {
+                    arg->shared->packages_to_update->push_back(it);
+                    sem_post(&arg->shared->sem_prod_cons);
+                }
+
+                sem_post(&arg->shared->sem_data);
+            }
+
+            xbps_object_iterator_release(it);
+        }
+
+        sem_wait(&arg->shared->sem_data);
+
+        if (arg->current_offset < arg->shared->manual_size) {
+            arg->shared->install_xbps.push_back(binpkgd);
+        }
+
+        if ((arg->shared->packages_done += 1) >= arg->shared->packages_to_update->size()) {
+            sem_post(&arg->shared->sem_prod_cons);
+            while (tqueue_put_node(&arg->shared->progress_queue, NULL) < 0) {
+                assert(errno == EINTR);
+            }
+        }
+
+        sem_post(&arg->shared->sem_data);
     }
 
     return NULL;
@@ -561,10 +584,12 @@ static int state_cb(const struct xbps_state_cb_data *xscb, void *user_)
 
 static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update)
 {
-    int rv;
+    int rv = -1;
     unsigned long maxthreads;
 
     struct vpkg_do_update_thread_shared_data shared;
+
+    xbps_repo_store(xhp, VPKG_BINPKGS);
 
     shared.packages_to_update = packages_to_update;
     shared.manual_size = shared.packages_to_update->size();
@@ -572,22 +597,31 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     shared.next_package = 0;
     shared.config = conf;
     shared.xhp = xhp;
+    shared.repo = xbps_repo_open(xhp, VPKG_BINPKGS);
+    shared.force = force_install;
 
     shared.xhp->state_cb = state_cb;
 
+    if (shared.repo) {
+        shared.idx = xbps_dictionary_copy_mutable(shared.repo->idx);
+        shared.idxmeta = xbps_dictionary_copy_mutable(shared.repo->idxmeta);
+    } else {
+        shared.idx = xbps_dictionary_create();
+        shared.idxmeta = NULL;
+    }
+
+    shared.idxstage = xbps_dictionary_create();
+
     if (sem_init(&shared.sem_data, 0, 1) < 0) {
-        return -1;
+        goto out_close_repo;
     }
 
     if (sem_init(&shared.sem_prod_cons, 0, shared.manual_size) < 0) {
-        assert(sem_destroy(&shared.sem_data) == 0);
-        return -1;
+        goto out_destroy_sem_data;
     }
 
     if (tqueue_init(&shared.progress_queue) < 0) {
-        assert(sem_destroy(&shared.sem_data) == 0);
-        assert(sem_destroy(&shared.sem_prod_cons) == 0);
-        return -1;
+        goto out_destroy_sem_prod_cons;
     }
 
     maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
@@ -596,201 +630,219 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         maxthreads = 1;
     }
 
-    pthread_t threads[maxthreads];
-    struct vpkg_do_update_thread_data thread_data[maxthreads];
+    {
+        pthread_t threads[maxthreads];
+        struct vpkg_do_update_thread_data thread_data[maxthreads];
 
-    unsigned long i;
-    for (i = 0; i < maxthreads; i++) {
-        thread_data[i].shared = &shared;
-        thread_data[i].tid_local = i;
+        unsigned long i;
+        for (i = 0; i < maxthreads; i++) {
+            thread_data[i].shared = &shared;
+            thread_data[i].tid_local = i;
 
-        if ((errno = pthread_create(&threads[i], NULL, vpkg_do_update_thread, &thread_data[i]))) {
-            // @todo: handle this
-            perror("pthread_create");
-        }
-    }
-
-    struct vpkg_progress progress_display[i];
-    int tid_to_offset[i];
-
-    size_t base_offset = 0;
-    size_t nrunning = 0;
-
-    bool anyerr = false;
-    for (;;) {
-        struct tqueue_node *n;
-        while (tqueue_get_node(&shared.progress_queue, &n) < 0) {
-            assert(errno == EINTR);
+            if ((errno = pthread_create(&threads[i], NULL, vpkg_do_update_thread, &thread_data[i]))) {
+                // @todo: handle this
+                perror("pthread_create");
+            }
         }
 
-        if (n == NULL) {
-            break;
-        }
+        struct vpkg_progress progress_display[i];
+        int tid_to_offset[i];
 
-        struct vpkg_progress data = *(struct vpkg_progress *)n->data;
-        free(n);
+        size_t base_offset = 0;
+        size_t nrunning = 0;
 
-        if (nrunning) {
-            printf("\033[%zuA", nrunning);
-        }
+        bool anyerr = false;
+        for (;;) {
+            struct tqueue_node *n;
+            while (tqueue_get_node(&shared.progress_queue, &n) < 0) {
+                assert(errno == EINTR);
+            }
 
-        switch (data.state) {
-        case vpkg_progress::DONE: {
-            assert(nrunning > 0);
+            if (n == NULL) {
+                break;
+            }
 
-            int tid0 = progress_display[base_offset % i].tid_local;
-            int tid1 = data.tid_local;
+            struct vpkg_progress data = *(struct vpkg_progress *)n->data;
+            free(n);
 
-            progress_display[tid_to_offset[tid1]] = progress_display[base_offset % i];
-            progress_display[base_offset % i] = data;
+            if (nrunning) {
+                printf("\033[%zuA", nrunning);
+            }
 
-            tid_to_offset[tid0] = tid_to_offset[tid1];
-            tid_to_offset[tid1] = base_offset % i;
+            switch (data.state) {
+            case vpkg_progress::DONE: {
+                assert(nrunning > 0);
 
-            print_bar(&data);
-            base_offset++, nrunning--;
-            break;
-        }
-        case vpkg_progress::INIT: {
-            assert(nrunning < i);
+                int tid0 = progress_display[base_offset % i].tid_local;
+                int tid1 = data.tid_local;
 
-            tid_to_offset[data.tid_local] = (base_offset + nrunning) % i;
-            progress_display[tid_to_offset[data.tid_local]] = data;
-            nrunning++;
-            break;
-        }
-        case vpkg_progress::ERROR: {
-            assert(nrunning > 0);
+                progress_display[tid_to_offset[tid1]] = progress_display[base_offset % i];
+                progress_display[base_offset % i] = data;
 
-            progress_display[tid_to_offset[data.tid_local]] = progress_display[(base_offset + nrunning - 1) % i];
-            progress_display[(base_offset + nrunning - 1) % i] = data;
-            break;
-        }
-        default: {
-            progress_display[tid_to_offset[data.tid_local]] = data;
-            break;
-        }
-        }
+                tid_to_offset[tid0] = tid_to_offset[tid1];
+                tid_to_offset[tid1] = base_offset % i;
 
-        for (size_t j = base_offset; j < base_offset + nrunning; j++) {
-            if (print_bar(&progress_display[j % i]) == vpkg_progress::ERROR) {
-                free(progress_display[j % i].error_message);
-                anyerr = true;
+                print_bar(&data);
+                base_offset++, nrunning--;
+                break;
+            }
+            case vpkg_progress::INIT: {
+                assert(nrunning < i);
+
+                tid_to_offset[data.tid_local] = (base_offset + nrunning) % i;
+                progress_display[tid_to_offset[data.tid_local]] = data;
+                nrunning++;
+                break;
+            }
+            case vpkg_progress::ERROR: {
+                assert(nrunning > 0);
+
+                progress_display[tid_to_offset[data.tid_local]] = progress_display[(base_offset + nrunning - 1) % i];
+                progress_display[(base_offset + nrunning - 1) % i] = data;
+                break;
+            }
+            default: {
+                progress_display[tid_to_offset[data.tid_local]] = data;
+                break;
+            }
+            }
+
+            for (size_t j = base_offset; j < base_offset + nrunning; j++) {
+                if (print_bar(&progress_display[j % i]) == vpkg_progress::ERROR) {
+                    free(progress_display[j % i].error_message);
+                    anyerr = true;
+                }
+            }
+
+            if (anyerr) {
+                break;
             }
         }
 
         if (anyerr) {
-            break;
-        }
-    }
-
-    if (anyerr) {
-        for (unsigned long j = 0; j < i; j++) {
-            if ((errno = pthread_kill(threads[j], SIGTERM))) {
-                perror("pthread_kill");
+            for (unsigned long j = 0; j < i; j++) {
+                if ((errno = pthread_kill(threads[j], SIGTERM))) {
+                    perror("pthread_kill");
+                }
             }
         }
-    }
 
-    for (unsigned long j = 0; j < i; j++) {
-        if ((errno = pthread_join(threads[j], NULL))) {
-            perror("pthread_join");
-        }
-    }
-
-    // Adds all packages to repo
-    index_add(xhp, shared.register_xbps.data(), shared.register_xbps.size());
-
-    for (auto &pathname : shared.install_xbps) {
-        const char *pkgver;
-
-        xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(pathname, "/props.plist");
-        free(pathname);
-
-        if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "pkgver", &pkgver)) {
-            fprintf(stderr, "pkgver unset\n");
-            xbps_object_release(binpkgd);
-            continue;
+        for (unsigned long j = 0; j < i; j++) {
+            if ((errno = pthread_join(threads[j], NULL))) {
+                perror("pthread_join");
+            }
         }
 
-        if (update) {
-            rv = xbps_transaction_update_pkg(xhp, pkgver);
-        } else {
-            rv = xbps_transaction_install_pkg(xhp, pkgver, force_install);
+        repodata_commit(shared.xhp, VPKG_BINPKGS, shared.idx, shared.idxmeta, shared.idxstage, NULL);
+
+        for (auto &binpkgd : shared.install_xbps) {
+            const char *pkgver;
+
+            if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "pkgver", &pkgver)) {
+                fprintf(stderr, "pkgver unset\n");
+                xbps_object_release(binpkgd);
+                continue;
+            }
+
+            if (update) {
+                rv = xbps_transaction_update_pkg(xhp, pkgver);
+            } else {
+                rv = xbps_transaction_install_pkg(xhp, pkgver, force_install);
+            }
+
+            // @todo: free vector
+            switch (rv) {
+            case 0:
+                xbps_object_release(binpkgd);
+                break;
+            case EEXIST:
+                // ignore already installed "packages may be updated"
+                fprintf(stderr, "%s: Already installed\n", pkgver);
+                xbps_object_release(binpkgd);
+                continue;
+            case ENOENT:
+                fprintf(stderr, "%s: Not found in repository pool\n", pkgver);
+                xbps_object_release(binpkgd);
+                goto out_destroy_queue;
+            default:
+                fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
+                xbps_object_release(binpkgd);
+                goto out_destroy_queue;
+            }
         }
 
-        // @todo: free vector
+        rv = xbps_transaction_prepare(xhp);
         switch (rv) {
         case 0:
-            xbps_object_release(binpkgd);
             break;
-        case EEXIST:
-            // ignore already installed "packages may be updated"
-            fprintf(stderr, "%s: Already installed\n", pkgver);
-            xbps_object_release(binpkgd);
-            continue;
-        case ENOENT:
-            fprintf(stderr, "%s: Not found in repository pool\n", pkgver);
-            xbps_object_release(binpkgd);
-            return -1;
+        case ENODEV:
+            fprintf(stderr, "Missing dependencies.\n");
+            goto out_destroy_queue;
         default:
-            fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
-            xbps_object_release(binpkgd);
-            return -1;
+            fprintf(stderr, "transaction_prepare: unexpected error: %d\n", rv);
+            goto out_destroy_queue;
+        }
+
+        if (xhp->transd == NULL) {
+            fprintf(stderr, "Nothing to do.\n");
+            return 0;
+        }
+
+        xbps_object_t obj;
+        xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "packages");
+
+        printf("Summary of changes:\n");
+        while ((obj = xbps_object_iterator_next(it)) != NULL) {
+            xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
+            const char *pkgname;
+            const char *pkgver;
+
+            assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname));
+            assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver));
+
+            pkgver = xbps_pkg_version(pkgver);
+
+            printf("%s -> %s\n", pkgname, pkgver);
+        }
+
+        xbps_object_iterator_release(it);
+
+        rv = yes_no_prompt() ? 0 : -1;
+        if (rv != 0) {
+            fprintf(stderr, "Aborting!\n");
+            goto out_destroy_queue;
+        }
+
+        rv = xbps_transaction_commit(xhp);
+        switch (rv) {
+        case 0:
+            break;
+        default:
+            fprintf(stderr, "Transaction failed: %d\n", rv);
+            break;
         }
     }
 
-    rv = xbps_transaction_prepare(xhp);
-    switch (rv) {
-    case 0:
-        break;
-    case ENODEV:
-        fprintf(stderr, "Missing dependencies.\n");
-        return -1;
-    default:
-        fprintf(stderr, "transaction_prepare: unexpected error: %d\n", rv);
-        return -1;
-    }
+out_destroy_queue:
+    assert(tqueue_fini(&shared.progress_queue) == 0);
 
-    if (xhp->transd == NULL) {
-        fprintf(stderr, "Nothing to do.\n");
-        return 0;
-    }
+out_destroy_sem_prod_cons:
+    assert(sem_destroy(&shared.sem_prod_cons) == 0);
 
-    xbps_object_t obj;
-    xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "packages");
+out_destroy_sem_data:
+    assert(sem_destroy(&shared.sem_data) == 0);
 
-    printf("Summary of changes:\n");
-    while ((obj = xbps_object_iterator_next(it)) != NULL) {
-        xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
-        const char *pkgname;
-        const char *pkgver;
+out_close_repo:
+    xbps_object_release(shared.idx);
+    xbps_object_release(shared.idxstage);
 
-        assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname));
-        assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver));
+    if (shared.idxmeta)
+        xbps_object_release(shared.idxmeta);
 
-        pkgver = xbps_pkg_version(pkgver);
+    if (shared.repo)
+        xbps_repo_close(shared.repo);
 
-        printf("%s -> %s\n", pkgname, pkgver);
-    }
-
-    xbps_object_iterator_release(it);
-
-    if (!yes_no_prompt()) {
-        fprintf(stderr, "Aborting!\n");
-        return -1;
-    }
-
-    rv = xbps_transaction_commit(xhp);
-    switch (rv) {
-    case 0:
-        break;
-    default:
-        fprintf(stderr, "Transaction failed: %d\n", rv);
-        return -1;
-    }
-
-    return 0;
+    return rv;
 }
 
 int main(int argc, char **argv)
