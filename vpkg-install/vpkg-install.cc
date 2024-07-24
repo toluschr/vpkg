@@ -550,6 +550,15 @@ static int print_bar(struct vpkg_progress *prog)
     return prog->state;
 }
 
+static int state_cb(const struct xbps_state_cb_data *xscb, void *user_)
+{
+    if (xscb->err) {
+        fprintf(stderr, "%s\n", xscb->desc);
+    }
+
+    return 0;
+}
+
 static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update)
 {
     int rv;
@@ -563,6 +572,8 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     shared.next_package = 0;
     shared.config = conf;
     shared.xhp = xhp;
+
+    shared.xhp->state_cb = state_cb;
 
     if (sem_init(&shared.sem_data, 0, 1) < 0) {
         return -1;
