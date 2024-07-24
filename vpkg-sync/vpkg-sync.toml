@@ -47,6 +47,12 @@ base_url = "http://repository.spotify.com"
 distribution = ""
 components = ["stable", "non-free"]
 
+[sources.jan]
+repository = "janhq/jan"
+
+[sources.jan.packages."jan-linux-amd64-*.deb"]
+name = "jan"
+
 # configure packages
 [sources.slack]
 base_url = "https://packagecloud.io/slacktechnologies/slack/"
