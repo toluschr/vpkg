@@ -276,7 +276,7 @@ static void *vpkg_do_update_thread(void *arg_)
         binpkgd = xbps_repo_get_pkg(arg->shared->repo, pkgname);
 
         // If the package was found and a newer version is available, re-download.
-        if (binpkgd != NULL && xbps_vpkg_gtver(binpkgd, &arg->current->second) == 1) {
+        if (binpkgd != NULL && xbps_vpkg_gtver(binpkgd, &arg->current->second) != 0) {
             binpkgd = NULL;
         }
 
