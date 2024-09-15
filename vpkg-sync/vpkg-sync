@@ -24,6 +24,8 @@ from pydantic.tools import parse_obj_as
 from datetime import datetime
 from typing import Optional
 
+from packaging.version import Version
+
 
 @dataclass
 class PackageSpec():
@@ -185,13 +187,13 @@ def guess_shlibs_from_pkgname(pkgname: str) -> list[str]:
 # print(guess_shlibs_from_pkgname("libwayland-cursor++1"))
 # exit()
 
-def parse_debian_package(string: bytes | str) -> dict[str, DebianPackage]:
+def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
     if isinstance(string, bytes):
         string = string.decode()
 
     assert isinstance(string, str)
 
-    packages = dict()
+    packages = list()
     for package_string in string.split("\n\n"):
         if len(package_string) == 0:
             continue
@@ -210,9 +212,7 @@ def parse_debian_package(string: bytes | str) -> dict[str, DebianPackage]:
         else:
             package["depends"] = []
 
-        package = parse_obj_as(DebianPackage, package)
-
-        packages[package.package] = package
+        packages.append(parse_obj_as(DebianPackage, package))
 
     return packages
 
@@ -221,7 +221,10 @@ def print_package(p: PackageSpec):
     global data_lock
 
     with data_lock:
-        print(f"[{p.name}]", file=vpkg_config_file)
+        if p.version is not None:
+            print(f"[{p.name}-{p.version}]", file=vpkg_config_file)
+        else:
+            print(f"[{p.name}]", file=vpkg_config_file)
 
         if p.url is not None:
             print(f"url = {p.url}", file=vpkg_config_file)
@@ -232,8 +235,8 @@ def print_package(p: PackageSpec):
         if p.not_deps is not None:
             print(f"not_deps = {' '.join(p.not_deps)}", file=vpkg_config_file)
 
-        if p.version is not None:
-            print(f"version = {p.version}", file=vpkg_config_file)
+        # if p.version is not None:
+        #     print(f"version = {p.version}", file=vpkg_config_file)
 
         if p.last_modified is not None:
             assert isinstance(p.last_modified, datetime)
@@ -283,14 +286,12 @@ def process_single_source(name, source):
 
         packages = parse_debian_package(content)
 
-        for k in packages.keys():
-            if source.whitelist is not None and k not in source.whitelist:
+        for v in packages:
+            if source.whitelist is not None and v.package not in source.whitelist:
                 continue
 
-            if source.blacklist is not None and k in source.blacklist:
+            if source.blacklist is not None and v.package not in source.blacklist:
                 continue
-
-            v = packages[k]
 
             manual_packages = source.packages if source.packages is not None else {}
 
@@ -302,23 +303,23 @@ def process_single_source(name, source):
                                                "",
                                                ""))
 
-            p = manual_packages.setdefault(k, PackageSpec(name=None,
-                                                          not_deps=None,
-                                                          deps=None,
-                                                          url=None,
-                                                          last_modified=None,
-                                                          version=None))
-            p.name = p.name if p.name is not None else k
+            p = manual_packages.setdefault(v.package, PackageSpec(name=None,
+                                                                  not_deps=None,
+                                                                  deps=None,
+                                                                  url=None,
+                                                                  last_modified=None,
+                                                                  version=None))
+            p.name = p.name if p.name is not None else v.package
             p.url = p.url if p.url is not None else deb_url
             p.version = p.version if p.version is not None else debian_version_to_xbps(v.version)
             # p.deps = p.deps if p.deps is not None else v.depends
 
             print_package(p)
 
-            possible_shlibs = guess_shlibs_from_pkgname(k)
+            possible_shlibs = guess_shlibs_from_pkgname(v.package)
             with data_lock:
                 for shlib in possible_shlibs:
-                    shlibs.setdefault(shlib, f"{k}-{p.version}")
+                    shlibs.setdefault(shlib, f"{p.name}-{p.version}")
 
     elif isinstance(source, GithubSource):
         if source.packages is None:
@@ -353,7 +354,7 @@ def process_single_source(name, source):
                     print_package(p)
                     break
             else:
-                print(f"No matches for package {k}", file=sys.stderr)
+                print(f"{source.repository}: No matches for package {k}", file=sys.stderr)
 
     elif isinstance(source, PackageSpec):
         if source.url is None:
