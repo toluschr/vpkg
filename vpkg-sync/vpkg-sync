@@ -19,7 +19,7 @@ import re
 import urllib.parse
 
 from pydantic.dataclasses import dataclass
-from pydantic.tools import parse_obj_as
+from pydantic import TypeAdapter
 
 from datetime import datetime
 from typing import Optional
@@ -212,7 +212,7 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
         else:
             package["depends"] = []
 
-        packages.append(parse_obj_as(DebianPackage, package))
+        packages.append(TypeAdapter(DebianPackage).validate_python(package))
 
     return packages
 
@@ -334,7 +334,7 @@ def process_single_source(name, source):
                                        ""))
 
         response = requests.get(url)
-        release = parse_obj_as(GithubRelease, response.json())
+        release = TypeAdapter(GithubRelease).validate_python(response.json())
 
         for k in source.packages.keys():
             for asset in release.assets:
@@ -403,7 +403,7 @@ if __name__ == '__main__':
     subprocess.run(["xdeb", "-SQ"])
 
     shlibs = load_shlibs_mapping()
-    config = parse_obj_as(Config, p)
+    config = TypeAdapter(Config).validate_python(p)
 
     if config.sources is None:
         exit(0)
