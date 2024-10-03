@@ -18,7 +18,7 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
     auto version = std::string_view{};
     const char *at;
 
-    if ((at = (const char *)memrchr(s_, '-', sl_))) {
+    if ((at = (const char *)memrchr(s_, '-', sl_)) && isdigit(at[0])) {
         int off = at - s_;
         version = std::string_view{section.begin() + off + 1, section.end()};
         section = section.substr(0, off);
