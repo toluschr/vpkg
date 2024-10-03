@@ -25,30 +25,32 @@ static void usage(int code)
     exit(code);
 }
 
-static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *, bool *)
+static int vpkg_list_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *pkgname, void *str, bool *)
 {
-    const char *pkgname;
     xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
-
     assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
 
     if (!is_xdeb(dict)) {
         return 0;
     }
 
-    if (!xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname)) {
-        return 0;
+    if (!str || strstr(pkgname, (const char *)str)) {
+        printf("%s\n", pkgname);
     }
 
-    printf("%s\n", pkgname);
     return 0;
 }
 
 int main(int argc, char **argv)
 {
     const char *config_path = VPKG_CONFIG_PATH;
-    bool list_pkgs = false;
+
+    const char *filter_pkgname = NULL;
+    size_t filter_pkgname_length = 0;
+
+    bool list = false;
     bool repository = false;
+
     vpkg::config config;
     struct xbps_handle xh;
     void *data = NULL;
@@ -69,7 +71,7 @@ int main(int argc, char **argv)
             config_path = optarg;
             break;
         case 'l':
-            list_pkgs = true;
+            list = true;
             break;
         case 'v':
             fprintf(stderr, "vpkg-%s\n", VPKG_REVISION);
@@ -81,7 +83,12 @@ int main(int argc, char **argv)
         }
     }
 
-    argc += optind, argv -= optind;
+    argc -= optind, argv += optind;
+
+    if (argc) {
+        filter_pkgname = argv[0];
+        filter_pkgname_length = strlen(argv[0]);
+    }
 
     config_fd = open(config_path, O_RDONLY);
     if (config_fd < 0) {
@@ -109,14 +116,16 @@ int main(int argc, char **argv)
         goto out;
     }
 
-    if (list_pkgs && !repository) {
-        if (xbps_pkgdb_foreach_cb(&xh, vpkg_list_cb, NULL) != 0) {
+    if (list && repository) {
+        for (auto &it : config) {
+            if (!filter_pkgname || memmem(it.first.data(), it.first.size(), filter_pkgname, filter_pkgname_length)) {
+                fprintf(stderr, "%.*s\n", (int)it.first.size(), it.first.data());
+            }
+        }
+    } else if (list) {
+        if (xbps_pkgdb_foreach_cb(&xh, vpkg_list_cb, (void *)filter_pkgname) != 0) {
             fprintf(stderr, "xbps initialization failed\n");
             goto out;
-        }
-    } else if (list_pkgs) {
-        for (auto &it : config) {
-            fprintf(stderr, "%.*s\n", it.first.size(), it.first.data());
         }
     }
 
