@@ -1,12 +1,15 @@
-DESTDIR = /usr/local
+DESTDIR := /usr/local
 
-CC = gcc
-CC_FLAGS = -I. -Wall -march=native -Og -ggdb
+CC := gcc
+CC_FLAGS += -I . -Wall -march=native -Og -ggdb
 
-CXX = g++
-CXX_FLAGS = -I. -Wall -march=native -Og -ggdb -fpermissive -std=c++17
+CXX := g++
+CXX_FLAGS += -I . -Wall -march=native -Og -ggdb -fpermissive -std=c++20
 
-LD_FLAGS = -lcurl -lxbps -larchive
+CC_FLAGS += -DVPKG_REVISION='"$(shell git rev-parse --short HEAD)"'
+CXX_FLAGS += -DVPKG_REVISION='"$(shell git rev-parse --short HEAD)"'
+
+LD_FLAGS += -lcurl -lxbps -larchive
 
 OBJ += vpkg-install/repodata.o
 OBJ += vpkg-install/vpkg-install.o
@@ -58,6 +61,6 @@ install:
 %.o: %.cpp
 	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
 
-%.o: makefile
+%.o: Makefile
 
 -include $(DEP)
