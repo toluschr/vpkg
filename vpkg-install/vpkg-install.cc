@@ -859,7 +859,6 @@ int main(int argc, char **argv)
 {
     bool force = false;
     bool update = false;
-    bool verbose = false;
 
     const char *config_path = VPKG_CONFIG_PATH;
     vpkg::config config;
@@ -885,7 +884,8 @@ int main(int argc, char **argv)
             config_path = optarg;
             break;
         case 'v':
-            verbose = true;
+            fprintf(stderr, "vpkg-%s\n", VPKG_REVISION);
+            exit(EXIT_FAILURE);
             break;
         case 'f':
             force = true;

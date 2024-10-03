@@ -21,7 +21,7 @@ static void die(const char *message)
 
 static void usage(int code)
 {
-    fprintf(stderr, "usage: vpkg-query [-R] [-l] <pkgname>\n");
+    fprintf(stderr, "usage: vpkg-query [-R] [-lv] <pkgname>\n");
     exit(code);
 }
 
@@ -60,7 +60,7 @@ int main(int argc, char **argv)
     memset(&xh, 0, sizeof(xh));
 
     // Options
-    while ((ch = getopt(argc, argv, ":c:Rl")) != -1) {
+    while ((ch = getopt(argc, argv, ":c:Rlv")) != -1) {
         switch (ch) {
         case 'R':
             repository = true;
@@ -71,8 +71,13 @@ int main(int argc, char **argv)
         case 'l':
             list_pkgs = true;
             break;
+        case 'v':
+            fprintf(stderr, "vpkg-%s\n", VPKG_REVISION);
+            exit(EXIT_FAILURE);
+            break;
         default:
             usage(EXIT_FAILURE);
+            break;
         }
     }
 
