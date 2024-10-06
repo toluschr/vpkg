@@ -320,8 +320,9 @@ static void *vpkg_do_update_thread(void *arg_)
             binpkgd = NULL;
         }
 
-        // If the package does not exist, download and convert it.
-        if (!binpkgd) {
+        if (binpkgd) {
+            xbps_object_retain(binpkgd);
+        } else {
             char *deb_package_path;
             char *at;
             CURLcode code;
@@ -436,7 +437,7 @@ static void *vpkg_do_update_thread(void *arg_)
                 break;
             }
 
-            default:
+            default: {
                 free(deb_package_path);
 
                 size_t len;
@@ -477,8 +478,8 @@ static void *vpkg_do_update_thread(void *arg_)
                 free(buf);
                 return NULL;
             }
-        } else {
-            xbps_object_retain(binpkgd);
+
+            }
         }
 
         post_state(arg, vpkg_progress::DONE);
