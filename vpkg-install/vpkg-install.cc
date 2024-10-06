@@ -1003,13 +1003,6 @@ int main(int argc, char **argv)
         goto end_xbps_lock;
     }
 
-    /*
-    if ((errno = add_full_deptree(&xh, &config, &to_install)) != 0) {
-        perror("Unable to resolve dependencies\n");
-        goto end_xbps_lock;
-    }
-    */
-
     if (to_install.size() == 0) {
         fprintf(stderr, "Nothing to do.\n");
         goto end_xbps_lock;
