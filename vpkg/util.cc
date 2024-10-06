@@ -58,7 +58,6 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
         const char *revision = xbps_pkg_revision(pkgver);
 
         if (version == NULL || revision == NULL) {
-            fprintf(stderr, "unable to get version or revision: %s\n", pkgver);
             return -1;
         }
 
@@ -73,7 +72,6 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
 
         return (xbps_cmpver(old_version.c_str(), new_version.c_str()) < 0);
     }
-
 
     if (vpkg->last_modified != 0) {
         const char *install_date;
@@ -90,7 +88,6 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
 
         next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
         if (next == NULL || *next != '\0' || next == install_date) {
-            fprintf(stderr, "%s: uable to parse install_date '%s'\n", pkgver, install_date);
             return -1;
         }
 
