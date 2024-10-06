@@ -373,18 +373,15 @@ static void *vpkg_do_update_thread(void *arg_)
                 return post_error(arg, "failed to create stdout pipe: %s", strerror(errno));
             }
 
-            std::string version;
-            std::string name;
-            std::string deps;
-            std::string not_deps;
-
             pid_t pid = fork();
             switch (pid) {
                 int status;
 
             case -1:
                 return post_error(arg, "failed to fork: %s", strerror(errno));
-            case 0:
+            case 0: {
+                char *not_deps, *version, *name, *deps;
+
                 if (dup2(stderr_pipefd[1], STDERR_FILENO) < 0) {
                     fprintf(stderr, "failed to pipe xdeb errors to vpkg\n");
                     exit(EXIT_FAILURE);
@@ -411,22 +408,20 @@ static void *vpkg_do_update_thread(void *arg_)
                 close(stdout_pipefd[0]);
                 close(stderr_pipefd[0]);
 
-                not_deps = "--not-deps=";
-                not_deps += arg->current->second.not_deps;
+                if (asprintf(&not_deps, "--not-deps=%.*s", (int)arg->current->second.not_deps.size(), arg->current->second.not_deps.data()) < 0 ||
+                    asprintf(&deps, "--deps=%.*s", (int)arg->current->second.deps.size(), arg->current->second.deps.data()) < 0 ||
+                    asprintf(&name, "--name=%.*s", (int)arg->current->second.name.size(), arg->current->second.name.data()) < 0 ||
+                    asprintf(&version, "--version=%.*s", (int)arg->current->second.version.size(), arg->current->second.version.data()) < 0) {
+                    // no free in child process
+                    fprintf(stderr, "failed to format xdeb arguments\n");
+                    exit(EXIT_FAILURE);
+                }
 
-                deps = "--deps=";
-                deps += arg->current->second.deps;
-
-                name = "--name=";
-                name += arg->current->first;
-
-                version = "--version=";
-                version += arg->current->second.version;
-
-                execlp("xdeb", "xdeb", "-edRL", not_deps.c_str(), deps.c_str(), name.c_str(), version.c_str(), "--", deb_package_path, NULL);
+                execlp("xdeb", "xdeb", "-edRL", not_deps, deps, name, version, "--", deb_package_path, NULL);
                 fprintf(stderr, "failed to execute xdeb binary\n");
                 exit(EXIT_FAILURE);
                 break;
+            }
 
             default:
                 free(deb_package_path);
