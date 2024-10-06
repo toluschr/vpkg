@@ -222,9 +222,9 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
 
 
 def print_package(p: PackageSpec):
-    global data_lock
+    global print_lock
 
-    with data_lock:
+    with print_lock:
         if p.version is not None:
             print(f"[{p.name}-{p.version}]", file=vpkg_config_file)
         else:
@@ -396,6 +396,7 @@ match machine:
 DEBIAN_BINARY = f"binary-{machine}"
 
 # @todo: Don't output in critical section. Use queue.
+print_lock = threading.Lock()
 data_lock = threading.Lock()
 vpkg_config_file = open("/etc/vpkg-install.ini", "w+")
 
