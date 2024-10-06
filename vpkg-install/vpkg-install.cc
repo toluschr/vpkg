@@ -799,9 +799,18 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     switch (rv) {
     case 0:
         break;
-    case ENODEV:
-        fprintf(stderr, "Missing dependencies.\n");
+    case ENODEV: {
+        xbps_object_t obj;
+        xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "missing_deps");
+
+        while ((obj = xbps_object_iterator_next(it)) != NULL) {
+            xbps_string_t str = static_cast<xbps_string_t>(obj);
+            fprintf(stderr, "%s\n", xbps_string_cstring_nocopy(str));
+        }
+
+        xbps_object_iterator_release(it);
         goto out_destroy_queue;
+    }
     default:
         fprintf(stderr, "transaction_prepare: unexpected error: %d\n", rv);
         goto out_destroy_queue;
