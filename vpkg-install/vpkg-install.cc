@@ -302,6 +302,10 @@ static void *vpkg_do_update_thread(void *arg_)
         }
 
         arg->current = arg->shared->packages_to_update->at(arg->current_offset);
+        sem_post(&arg->shared->sem_data);
+
+        // vpkg_progress::ERROR must always come after vpkg_progress::INIT
+        post_state(arg, vpkg_progress::INIT);
 
         char pkgname[arg->current->first.size() + 1];
         memcpy(pkgname, arg->current->first.data(), arg->current->first.size());
@@ -314,59 +318,36 @@ static void *vpkg_do_update_thread(void *arg_)
             binpkgd = NULL;
         }
 
-        sem_post(&arg->shared->sem_data);
-
         // If the package does not exist, download and convert it.
         if (!binpkgd) {
-            int deb_package_path_length, url_length;
-            char *deb_package_path, *url;
+            char *deb_package_path;
+            char *url;
+            char *at;
+            FILE *f;
+            CURLcode code;
 
-            post_state(arg, vpkg_progress::INIT);
-
-            url_length = arg->current->second.url.size();
-            url = alloca(sizeof(*url) * (url_length + 1));
-            memcpy(url, arg->current->second.url.data(), url_length);
-            url[url_length] = '\0';
-
-            deb_package_path_length = snprintf(NULL,
-                                               0,
-                                               "%s/%d/%.*s.deb",
-                                               VPKG_TEMPDIR,
-                                               gettid(),
-                                               (int)arg->current->first.size(),
-                                               arg->current->first.data());
-            if (deb_package_path_length < 0) {
-                return post_error(arg, "failed to format pathname: %s", strerror(errno));
+            if (asprintf(&url, "%.*s", (int)arg->current->second.url.size(), arg->current->second.url.data()) < 0) {
+                return post_error(arg, "failed to format url: %s", strerror(ENOMEM));
             }
 
-            deb_package_path = alloca(sizeof(*deb_package_path) * (deb_package_path_length + 1));
-
-            deb_package_path_length = snprintf(deb_package_path,
-                                               deb_package_path_length + 1,
-                                               "%s/%d/%.*s.deb",
-                                               VPKG_TEMPDIR,
-                                               gettid(),
-                                               (int)arg->current->first.size(),
-                                               arg->current->first.data());
-            if (deb_package_path_length < 0) {
-                return post_error(arg, "failed to format pathname: %s", strerror(errno));
+            if (asprintf(&deb_package_path, "%s/%d/%.*s.deb", VPKG_TEMPDIR, gettid(), (int)arg->current->first.size(), arg->current->first.data()) < 0) {
+                return post_error(arg, "failed to format pathname: %s", strerror(ENOMEM));
             }
 
-            char *at = strrchr(deb_package_path, '/');
-            assert(at);
+            at = strrchr(deb_package_path, '/');
 
             *at = '\0';
             if (mkdir(deb_package_path, 0644) < 0 && errno != EEXIST) {
                 return post_error(arg, "failed to create pkgroot: %s", strerror(errno));
             }
-
             *at = '/';
-            FILE *f = fopen(deb_package_path, "w");
+
+            f = fopen(deb_package_path, "w");
             if (f == NULL) {
                 return post_error(arg, "failed to open destination file: %s", strerror(errno));
             }
 
-            CURLcode code = download(url, f, arg);
+            code = download(url, f, arg);
             fclose(f);
 
             // download all packages first
@@ -445,6 +426,9 @@ static void *vpkg_do_update_thread(void *arg_)
                 break;
 
             default:
+                size_t len;
+                char *buf;
+
                 // ignore error, @todo: handle EINTR
                 close(stdout_pipefd[1]);
                 close(stderr_pipefd[1]);
@@ -453,48 +437,35 @@ static void *vpkg_do_update_thread(void *arg_)
                     return post_error(arg, "failed to wait for child to complete: %s", strerror(errno));
                 }
 
-                if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
-                    size_t len;
-                    char *buf = read_all_null_no_tr_nl(stderr_pipefd[0], &len);
-                    if (buf == 0) {
+                bool failed = !WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS;
+                buf = read_all_null_no_tr_nl(failed ? stderr_pipefd[0] : stdout_pipefd[0], &len);
+
+                if (failed) {
+                    if (buf == NULL) {
                         return post_error(arg, "xdeb failed with %d (unable to read output: %s)", WEXITSTATUS(status), strerror(errno));
                     }
 
                     post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
-                    free(buf);
-                    return NULL;
+                } else {
+                    if (buf == NULL) {
+                        return post_error(arg, "failed to parse xdeb output: %s", strerror(errno));
+                    }
+
+                    post_state(arg, vpkg_progress::DONE);
+
+                    sem_wait(&arg->shared->sem_data);
+                    binpkgd = repodata_add(arg->shared->xhp, buf, arg->shared->idx, arg->shared->idxmeta, arg->shared->idxstage);
+                    sem_post(&arg->shared->sem_data);
                 }
 
-                FILE *f = fdopen(stdout_pipefd[0], "r");
-                // @todo: inval ignored
-
-                char *line = NULL;
-                size_t len = 0;
-
-                ssize_t nread = getline(&line, &len, f);
-                if (nread == -1) {
-                    return post_error(arg, "failed to parse xdeb output: %s", strerror(errno));
-                }
-
-                if (nread > 0 && line[nread - 1] == '\n') {
-                    line[--nread] = '\0';
-                }
-
-                fclose(f);
-
-                post_state(arg, vpkg_progress::DONE);
-
-                sem_wait(&arg->shared->sem_data);
-                binpkgd = repodata_add(arg->shared->xhp, line, arg->shared->idx, arg->shared->idxmeta, arg->shared->idxstage);
-                sem_post(&arg->shared->sem_data);
-
-                free(line);
+                free(buf);
+                return NULL;
             }
         } else {
-            post_state(arg, vpkg_progress::INIT);
             xbps_object_retain(binpkgd);
-            post_state(arg, vpkg_progress::DONE);
         }
+
+        post_state(arg, vpkg_progress::DONE);
 
         xbps_object_t obj = xbps_dictionary_get(binpkgd, "run_depends");
         if (obj != NULL) {
