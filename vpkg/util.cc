@@ -44,13 +44,8 @@ bool yes_no_prompt(void)
 int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
 {
     const char *pkgver;
-    const char *install_date;
 
     assert(xpkg != NULL);
-
-    if (!xbps_dictionary_get_cstring_nocopy(xpkg, "install-date", &install_date)) {
-        return -1;
-    }
 
     if (!xbps_dictionary_get_cstring_nocopy(xpkg, "pkgver", &pkgver)) {
         return -1;
@@ -81,6 +76,12 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
 
 
     if (vpkg->last_modified != 0) {
+        const char *install_date;
+
+        if (!xbps_dictionary_get_cstring_nocopy(xpkg, "install-date", &install_date)) {
+            return -1;
+        }
+
         char *next;
         struct tm t;
 
