@@ -491,7 +491,9 @@ static void *vpkg_do_update_thread(void *arg_)
                 free(line);
             }
         } else {
+            post_state(arg, vpkg_progress::INIT);
             xbps_object_retain(binpkgd);
+            post_state(arg, vpkg_progress::DONE);
         }
 
         xbps_object_t obj = xbps_dictionary_get(binpkgd, "run_depends");
