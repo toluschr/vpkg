@@ -1,3 +1,78 @@
+# ungoogled chromium
+[sources.ungoogled-chromium-debian]
+repository = "berkley4/ungoogled-chromium-debian"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium-dbgsym_*_amd64.deb"]
+name = "ungoogled-chromium-dbgsym"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium-driver-dbgsym_*_amd64.deb"]
+name = "ungoogled-chromium-driver-dbgsym"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium-driver_*_amd64.deb"]
+name = "ungoogled-chromium-driver"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium-l10n_*_all.deb"]
+name = "ungoogled-chromium-l10n"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium-sandbox-dbgsym_*_amd64.deb"]
+name = "ungoogled-chromium-sandbox-dbgsym"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium-sandbox_*_amd64.deb"]
+name = "ungoogled-chromium-sandbox"
+
+[sources.ungoogled-chromium-debian.packages."ungoogled-chromium_*_amd64.deb"]
+name = "ungoogled-chromium"
+
+
+# brave browser
+[sources.brave-browser]
+repository = "brave/brave-browser"
+
+[sources.brave-browser.packages."*_amd64.deb"]
+name = "brave-browser"
+
+
+# jan
+[sources.jan]
+repository = "janhq/jan"
+
+[sources.jan.packages."jan-linux-amd64-*.deb"]
+name = "jan"
+
+
+# plasticity
+[sources.plasticity]
+repository = "nkallen/plasticity"
+
+[sources.plasticity.packages."*plasticity*amd64.deb"]
+name = "plasticity"
+
+
+# obsidian
+[sources.obsidian]
+repository = "obsidianmd/obsidian-releases"
+
+[sources.obsidian.packages."obsidian*amd64.deb"]
+name = "obsidian"
+
+
+# scenebuilder
+[sources.scenebuilder]
+repository = "gluonhq/scenebuilder"
+
+[sources.scenebuilder.packages."SceneBuilder-*.deb"]
+name = "scenebuilder"
+
+
+# figma linux
+[sources.figma-linux]
+repository = "Figma-Linux/figma-linux"
+
+[sources.figma-linux.packages."figma-linux*amd64.deb"]
+name = "figma-linux"
+
+
+# debian packages
 [sources.debian]
 base_url = "http://ftp.de.debian.org"
 distribution = "debian"
@@ -6,78 +81,70 @@ components = ["bookworm", "main"]
 [sources.debian.packages.kodi]
 deps = ["kodi-bin>=0", "kodi-data>=0"]
 
-[sources.scenebuilder]
-repository = "gluonhq/scenebuilder"
 
-[sources.scenebuilder.packages."SceneBuilder-*.deb"]
-name = "scenebuilder"
-
+# gitkraken
 [sources.gitkraken]
 url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
 not_deps = ["musl"]
 
+
+# discord
 [sources.discord]
 url = "https://discord.com/api/download?platform=linux&format=deb"
 
+
+# unity
 [sources.unity]
 base_url = "https://hub-dist.unity3d.com/artifactory/"
 distribution = "hub-debian-prod-local"
 components = ["stable", "main"]
 
-[sources.obsidian]
-repository = "obsidianmd/obsidian-releases"
 
-[sources.obsidian."obsidian-*-amd64.deb"]
-name = "obsidian"
-
-[sources.figma-linux]
-repository = "Figma-Linux/figma-linux"
-
-[sources.figma-linux."figma-linux_*_linux_amd64.deb"]
-name = "figma-linux"
-
-[sources.brave-browser]
-repository = "brave/brave-browser"
-
-[sources.brave-browser.packages."*_amd64.deb"]
-name = "brave-browser"
-
+# spotify
 [sources.spotify]
 base_url = "http://repository.spotify.com"
 distribution = ""
 components = ["stable", "non-free"]
 
-[sources.jan]
-repository = "janhq/jan"
 
-[sources.jan.packages."jan-linux-amd64-*.deb"]
-name = "jan"
+# signal
+[sources.signal]
+base_url = "https://updates.signal.org/desktop/"
+distribution = "apt"
+components = ["xenial", "main"]
 
-# configure packages
+
+# slack
 [sources.slack]
 base_url = "https://packagecloud.io/slacktechnologies/slack/"
 distribution = "debian"
 components = ["jessie", "main"]
 
-[sources.llvm19]
-base_url = "https://apt.llvm.org/"
-distribution = "bullseye"
-components = ["llvm-toolchain-bullseye", "main"]
 
-[sources.llvm19.packages.clang-19]
-name = "clang19"
+# llvm19
+# [sources.llvm19]
+# base_url = "https://apt.llvm.org/"
+# distribution = "bullseye"
+# components = ["llvm-toolchain-bullseye", "main"]
+#
+# [sources.llvm19.packages.clang-19]
+# name = "clang19"
+#
+# [sources.llvm19.packages.clang-format-19]
+# name = "clang-format19"
+#
+# [sources.llvm19.packages.libclang-19-dev]
+# name = "libclang19-dev"
+#
+# [sources.llvm19.packages.libclang-common-19-dev]
+# name = "clang19-headers"
 
-[sources.llvm19.packages.clang-format-19]
-name = "clang-format19"
 
-[sources.llvm19.packages.libclang-19-dev]
-name = "libclang19-dev"
-
-[sources.llvm19.packages.libclang-common-19-dev]
-name = "clang19-headers"
-
+# code
 [sources.code]
 url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 
+
+# code insiders
 [sources.code-insiders]
 url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"
