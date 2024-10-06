@@ -173,8 +173,10 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    // @todo: Handle EINTR
-    sem_wait(user->sem_data);
+    while (sem_wait(user->sem_data) < 0) {
+        assert(errno == EINTR);
+    }
+
     user->packages_to_update->push_back(it);
     sem_post(user->sem_data);
 
