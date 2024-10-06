@@ -561,16 +561,16 @@ static int print_bar(struct vpkg_progress *prog)
     printf("\033[K");
     switch (prog->state) {
     case vpkg_progress::INIT:
-        printf("%.*s initializing\n", (int)prog->name.size(), prog->name.data());
+        printf("%.*s init\n", (int)prog->name.size(), prog->name.data());
         break;
     case vpkg_progress::CURL:
-        printf("%.*s downloading %ld/%ld\n", (int)prog->name.size(), prog->name.data(), prog->dlnow, prog->dltotal);
+        printf("%.*s curl (%ld/%ld)\n", (int)prog->name.size(), prog->name.data(), prog->dlnow, prog->dltotal);
         break;
     case vpkg_progress::XDEB:
         printf("%.*s xdeb\n", (int)prog->name.size(), prog->name.data());
         break;
     case vpkg_progress::DONE:
-        printf("%.*s finished\n", (int)prog->name.size(), prog->name.data());
+        printf("%.*s done\n", (int)prog->name.size(), prog->name.data());
         break;
     case vpkg_progress::ERROR:
         printf("%.*s \033[31;1merror\033[0m %s\n", (int)prog->name.size(), prog->name.data(), prog->error_message);
@@ -644,6 +644,21 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         maxthreads = 1;
     }
 
+    /*
+     * Start up to maxthreads threads and output their progress as such:
+     *
+     * vpkg_progress::CURL:
+     *  name0 curl (current/total)
+     *  name1 curl (current/total)
+     *
+     * vpkg_progress::XDEB:
+     *  name0 curl (current/total)
+     *  name1 xdeb
+     *
+     * vpkg_progress::DONE:
+     *  name1 done
+     *  name0 curl (current/total)
+     */
     {
         pthread_t threads[maxthreads];
         struct vpkg_do_update_thread_data thread_data[maxthreads];
