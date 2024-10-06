@@ -647,19 +647,19 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         pthread_t threads[maxthreads];
         struct vpkg_do_update_thread_data thread_data[maxthreads];
 
-        unsigned long i;
-        for (i = 0; i < maxthreads; i++) {
-            thread_data[i].shared = &shared;
-            thread_data[i].tid_local = i;
+        unsigned long numthreads;
+        for (numthreads = 0; numthreads < maxthreads; numthreads++) {
+            thread_data[numthreads].shared = &shared;
+            thread_data[numthreads].tid_local = numthreads;
 
-            if ((errno = pthread_create(&threads[i], NULL, vpkg_do_update_thread, &thread_data[i]))) {
-                // @todo: handle this
-                perror("pthread_create");
+            if ((errno = pthread_create(&threads[numthreads], NULL, vpkg_do_update_thread, &thread_data[numthreads]))) {
+                fprintf(stderr, "pthread_create failed, executing %ld threads only\n", numthreads);
+                break;
             }
         }
 
-        struct vpkg_progress progress_display[i];
-        int tid_to_offset[i];
+        struct vpkg_progress progress_display[numthreads];
+        int tid_to_offset[numthreads];
 
         size_t base_offset = 0;
         size_t nrunning = 0;
@@ -686,23 +686,23 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
             case vpkg_progress::DONE: {
                 assert(nrunning > 0);
 
-                int tid0 = progress_display[base_offset % i].tid_local;
+                int tid0 = progress_display[base_offset % numthreads].tid_local;
                 int tid1 = data.tid_local;
 
-                progress_display[tid_to_offset[tid1]] = progress_display[base_offset % i];
-                progress_display[base_offset % i] = data;
+                progress_display[tid_to_offset[tid1]] = progress_display[base_offset % numthreads];
+                progress_display[base_offset % numthreads] = data;
 
                 tid_to_offset[tid0] = tid_to_offset[tid1];
-                tid_to_offset[tid1] = base_offset % i;
+                tid_to_offset[tid1] = base_offset % numthreads;
 
                 print_bar(&data);
                 base_offset++, nrunning--;
                 break;
             }
             case vpkg_progress::INIT: {
-                assert(nrunning < i);
+                assert(nrunning < numthreads);
 
-                tid_to_offset[data.tid_local] = (base_offset + nrunning) % i;
+                tid_to_offset[data.tid_local] = (base_offset + nrunning) % numthreads;
                 progress_display[tid_to_offset[data.tid_local]] = data;
                 nrunning++;
                 break;
@@ -710,8 +710,8 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
             case vpkg_progress::ERROR: {
                 assert(nrunning > 0);
 
-                progress_display[tid_to_offset[data.tid_local]] = progress_display[(base_offset + nrunning - 1) % i];
-                progress_display[(base_offset + nrunning - 1) % i] = data;
+                progress_display[tid_to_offset[data.tid_local]] = progress_display[(base_offset + nrunning - 1) % numthreads];
+                progress_display[(base_offset + nrunning - 1) % numthreads] = data;
                 break;
             }
             default: {
@@ -721,8 +721,8 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
             }
 
             for (size_t j = base_offset; j < base_offset + nrunning; j++) {
-                if (print_bar(&progress_display[j % i]) == vpkg_progress::ERROR) {
-                    free(progress_display[j % i].error_message);
+                if (print_bar(&progress_display[j % numthreads]) == vpkg_progress::ERROR) {
+                    free(progress_display[j % numthreads].error_message);
                     anyerr = true;
                 }
             }
@@ -733,14 +733,14 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         }
 
         if (anyerr) {
-            for (unsigned long j = 0; j < i; j++) {
+            for (unsigned long j = 0; j < numthreads; j++) {
                 if ((errno = pthread_kill(threads[j], SIGTERM))) {
                     perror("pthread_kill");
                 }
             }
         }
 
-        for (unsigned long j = 0; j < i; j++) {
+        for (unsigned long j = 0; j < numthreads; j++) {
             if ((errno = pthread_join(threads[j], NULL))) {
                 perror("pthread_join");
             }
