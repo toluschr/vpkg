@@ -47,8 +47,6 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
             iterator->second.url = value;
         } else if (key == "deps") {
             iterator->second.deps = value;
-        } else if (key == "name") {
-            iterator->second.name = value;
         } else if (key == "not_deps") {
             iterator->second.not_deps = value;
         } else if (key == "last_modified") {

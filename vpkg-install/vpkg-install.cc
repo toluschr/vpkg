@@ -424,7 +424,7 @@ static void *vpkg_do_update_thread(void *arg_)
 
                 if (asprintf(&not_deps, "--not-deps=%.*s", (int)arg->current->second.not_deps.size(), arg->current->second.not_deps.data()) < 0 ||
                     asprintf(&deps, "--deps=%.*s", (int)arg->current->second.deps.size(), arg->current->second.deps.data()) < 0 ||
-                    asprintf(&name, "--name=%.*s", (int)arg->current->second.name.size(), arg->current->second.name.data()) < 0 ||
+                    asprintf(&name, "--name=%.*s", (int)arg->current->first.size(), arg->current->first.data()) < 0 ||
                     asprintf(&version, "--version=%.*s", (int)arg->current->second.version.size(), arg->current->second.version.data()) < 0) {
                     // no free in child process
                     fprintf(stderr, "failed to format xdeb arguments\n");

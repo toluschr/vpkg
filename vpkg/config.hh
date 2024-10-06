@@ -12,7 +12,6 @@
 namespace vpkg {
 struct package {
     std::string_view url{};
-    std::string_view name{};
     std::string_view deps{};
     std::string_view version{};
     std::string_view not_deps{};
