@@ -653,8 +653,13 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
             thread_data[numthreads].tid_local = numthreads;
 
             if ((errno = pthread_create(&threads[numthreads], NULL, vpkg_do_update_thread, &thread_data[numthreads]))) {
-                fprintf(stderr, "pthread_create failed, executing %ld threads only\n", numthreads);
-                break;
+                if (numthreads == 0) {
+                    fprintf(stderr, "pthread_create failed on first thread: %s, aborting\n", strerror(errno));
+                    goto out_destroy_queue;
+                } else {
+                    fprintf(stderr, "pthread_create failed: %s, executing %ld threads only\n", strerror(errno), numthreads);
+                    break;
+                }
             }
         }
 
