@@ -75,23 +75,50 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
 
     if (vpkg->last_modified != 0) {
         const char *install_date;
+        const char *repository;
+        const char *arch;
+        time_t time;
+        char *buf;
 
-        if (!xbps_dictionary_get_cstring_nocopy(xpkg, "install-date", &install_date)) {
-            return -1;
+
+        if (xbps_dictionary_get_cstring_nocopy(xpkg, "install-date", &install_date)) {
+            struct tm t;
+
+            char *next;
+            memset(&t, 0, sizeof(t));
+
+            // Parse timestamp
+            next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
+            if (next == NULL || *next != '\0' || next == install_date) {
+                return -1;
+            }
+
+            time = mktime(&t);
+        } else {
+            if (!xbps_dictionary_get_cstring_nocopy(xpkg, "repository", &repository)) {
+                return -1;
+            }
+
+            if (!xbps_dictionary_get_cstring_nocopy(xpkg, "architecture", &arch)) {
+                return -1;
+            }
+
+            if (asprintf(&buf, "%s/%s.%s.xbps", repository, pkgver, arch) < 0) {
+                return -1;
+            }
+
+            struct stat st;
+            if (stat(buf, &st) < 0) {
+                free(buf);
+                return -1;
+            }
+
+            time = st.st_mtime;
+            free(buf);
         }
 
-        char *next;
-        struct tm t;
 
-        // Parse timestamp
-        memset(&t, 0, sizeof(t));
-
-        next = strptime(install_date, "%Y-%m-%d %H:%M %Z", &t);
-        if (next == NULL || *next != '\0' || next == install_date) {
-            return -1;
-        }
-
-        return (mktime(&t) < vpkg->last_modified);
+        return (time < vpkg->last_modified);
     }
 
     return -1;
