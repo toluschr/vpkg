@@ -1,10 +1,10 @@
 DESTDIR := /usr/local
 
 CC := gcc
-CC_FLAGS += -I . -Wall -march=native -Og -ggdb
+CC_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb
 
 CXX := g++
-CXX_FLAGS += -I . -Wall -march=native -Og -ggdb -fpermissive -std=c++20
+CXX_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb -fpermissive -std=c++20
 
 CC_FLAGS += -DVPKG_REVISION='"$(shell git rev-parse --short HEAD)"'
 CXX_FLAGS += -DVPKG_REVISION='"$(shell git rev-parse --short HEAD)"'
