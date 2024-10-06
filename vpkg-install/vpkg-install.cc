@@ -321,13 +321,8 @@ static void *vpkg_do_update_thread(void *arg_)
         // If the package does not exist, download and convert it.
         if (!binpkgd) {
             char *deb_package_path;
-            char *url;
             char *at;
             CURLcode code;
-
-            if (asprintf(&url, "%.*s", (int)arg->current->second.url.size(), arg->current->second.url.data()) < 0) {
-                return post_error(arg, "failed to format url: %s", strerror(ENOMEM));
-            }
 
             if (asprintf(&deb_package_path, "%s/%d/%.*s.deb", VPKG_TEMPDIR, gettid(), (int)arg->current->first.size(), arg->current->first.data()) < 0) {
                 return post_error(arg, "failed to format pathname: %s", strerror(ENOMEM));
@@ -342,13 +337,20 @@ static void *vpkg_do_update_thread(void *arg_)
             *at = '/';
 
             {
+                char *url;
+                if (asprintf(&url, "%.*s", (int)arg->current->second.url.size(), arg->current->second.url.data()) < 0) {
+                    return post_error(arg, "failed to format url: %s", strerror(ENOMEM));
+                }
+
                 FILE *f = fopen(deb_package_path, "w");
                 if (f == NULL) {
                     return post_error(arg, "failed to open destination file: %s", strerror(errno));
                 }
 
                 code = download(url, f, arg);
+
                 fclose(f);
+                free(url);
             }
 
             // download all packages first
@@ -427,6 +429,8 @@ static void *vpkg_do_update_thread(void *arg_)
                 break;
 
             default:
+                free(deb_package_path);
+
                 size_t len;
                 char *buf;
 
