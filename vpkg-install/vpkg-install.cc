@@ -323,7 +323,6 @@ static void *vpkg_do_update_thread(void *arg_)
             char *deb_package_path;
             char *url;
             char *at;
-            FILE *f;
             CURLcode code;
 
             if (asprintf(&url, "%.*s", (int)arg->current->second.url.size(), arg->current->second.url.data()) < 0) {
@@ -342,13 +341,15 @@ static void *vpkg_do_update_thread(void *arg_)
             }
             *at = '/';
 
-            f = fopen(deb_package_path, "w");
-            if (f == NULL) {
-                return post_error(arg, "failed to open destination file: %s", strerror(errno));
-            }
+            {
+                FILE *f = fopen(deb_package_path, "w");
+                if (f == NULL) {
+                    return post_error(arg, "failed to open destination file: %s", strerror(errno));
+                }
 
-            code = download(url, f, arg);
-            fclose(f);
+                code = download(url, f, arg);
+                fclose(f);
+            }
 
             // download all packages first
             if (code != CURLE_OK) {
