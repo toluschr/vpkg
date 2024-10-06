@@ -52,14 +52,44 @@ static void free_preserve_errno(void *ptr)
     errno = e;
 }
 
-struct vpkg_check_update_cb_data {
-    vpkg::config *config;
+static char *read_all_null_no_tr_nl(int fd, size_t *length)
+{
+    char *buf = NULL;
+    size_t bufsz = 0;
 
-    sem_t *sem_data;
-    bool force;
+    for (;;) {
+        char *new_buf = (char *)realloc(buf, bufsz + BUFSIZ + 1);
+        if (new_buf == NULL) {
+            free_preserve_errno(buf);
+            return NULL;
+        }
 
-    std::vector<::vpkg::config::iterator> *packages_to_update;
-};
+        buf = new_buf;
+
+        ssize_t nr = read(fd, buf, BUFSIZ);
+        if (nr < 0) {
+            free_preserve_errno(buf);
+            return NULL;
+        }
+
+        bufsz += nr;
+        buf[bufsz] = '\0';
+
+        if (nr != BUFSIZ) {
+            break;
+        }
+    }
+
+    while (bufsz && buf[bufsz - 1] == '\n') {
+        buf[--bufsz] = '\0';
+    }
+
+    if (length) {
+        *length = bufsz;
+    }
+
+    return buf;
+}
 
 struct vpkg_progress {
     enum state {
@@ -82,6 +112,15 @@ struct vpkg_progress {
     };
 
     char *error_message;
+};
+
+struct vpkg_check_update_cb_data {
+    vpkg::config *config;
+
+    sem_t *sem_data;
+    bool force;
+
+    std::vector<::vpkg::config::iterator> *packages_to_update;
 };
 
 struct vpkg_do_update_thread_shared_data {
@@ -368,24 +407,24 @@ static void *vpkg_do_update_thread(void *arg_)
                 return post_error(arg, "failed to fork: %s", strerror(errno));
             case 0:
                 if (dup2(stderr_pipefd[1], STDERR_FILENO) < 0) {
-                    // @todo message
+                    fprintf(stderr, "failed to pipe xdeb errors to vpkg\n");
                     exit(EXIT_FAILURE);
                 }
 
                 if (dup2(stdout_pipefd[1], STDOUT_FILENO) < 0) {
-                    // @todo message
+                    fprintf(stderr, "failed to pipe xdeb output to vpkg\n");
                     exit(EXIT_FAILURE);
                 }
 
                 *at = '\0';
                 if (setenv("XDEB_PKGROOT", deb_package_path, 1) < 0) {
-                    fprintf(stderr, "failed to set pkgroot\n");
+                    fprintf(stderr, "failed to set environment variable XDEB_PKGROOT\n");
                     exit(EXIT_FAILURE);
                 }
                 *at = '/';
 
                 if (setenv("XDEB_BINPKGS", VPKG_BINPKGS, 1) < 0) {
-                    fprintf(stderr, "failed to set binpkgs\n");
+                    fprintf(stderr, "failed to set environment variable XDEB_BINPKGS\n");
                     exit(EXIT_FAILURE);
                 }
 
@@ -406,8 +445,8 @@ static void *vpkg_do_update_thread(void *arg_)
                 version += arg->current->second.version;
 
                 execlp("xdeb", "xdeb", "-edRL", not_deps.c_str(), deps.c_str(), name.c_str(), version.c_str(), "--", deb_package_path, NULL);
+                fprintf(stderr, "failed to execute xdeb binary\n");
                 exit(EXIT_FAILURE);
-
                 break;
 
             default:
@@ -420,34 +459,10 @@ static void *vpkg_do_update_thread(void *arg_)
                 }
 
                 if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
-                    char *buf = NULL;
-                    size_t bufsz = 0;
-
-                    for (;;) {
-                        char *new_buf = (char *)realloc(buf, bufsz + BUFSIZ + 1);
-                        if (new_buf == NULL) {
-                            free_preserve_errno(buf);
-                            return post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
-                        }
-
-                        buf = new_buf;
-
-                        ssize_t nr = read(stderr_pipefd[0], buf, BUFSIZ);
-                        if (nr < 0) {
-                            free_preserve_errno(buf);
-                            return post_error(arg, "xdeb failed with %d (unable to format output: %s)", WEXITSTATUS(status), strerror(errno));
-                        }
-
-                        bufsz += nr;
-                        buf[bufsz] = '\0';
-
-                        if (nr != BUFSIZ) {
-                            break;
-                        }
-                    }
-
-                    while (bufsz && buf[bufsz - 1] == '\n') {
-                        buf[--bufsz] = '\0';
+                    size_t len;
+                    char *buf = read_all_null_no_tr_nl(stderr_pipefd[0], &len);
+                    if (buf == 0) {
+                        return post_error(arg, "xdeb failed with %d (unable to read output: %s)", WEXITSTATUS(status), strerror(errno));
                     }
 
                     post_error(arg, "xdeb failed with %d:\n%s", WEXITSTATUS(status), buf);
@@ -629,7 +644,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
 
     maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
     if (maxthreads == (unsigned long)-1) {
-        fprintf(stderr, "failed to get core count: %s, executing using two threads.\n", strerror(errno));
+        fprintf(stderr, "failed to get core count: %s, executing using one worker thread.\n", strerror(errno));
         maxthreads = 1;
     }
 
