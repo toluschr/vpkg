@@ -468,15 +468,12 @@ static void *vpkg_do_update_thread(void *arg_)
                         return post_error(arg, "failed to parse xdeb output: %s", strerror(errno));
                     }
 
-                    post_state(arg, vpkg_progress::DONE);
-
                     sem_wait(&arg->shared->sem_data);
                     binpkgd = repodata_add(arg->shared->xhp, buf, arg->shared->idx, arg->shared->idxmeta, arg->shared->idxstage);
                     sem_post(&arg->shared->sem_data);
                 }
 
                 free(buf);
-                return NULL;
             }
 
             }
@@ -485,6 +482,7 @@ static void *vpkg_do_update_thread(void *arg_)
         post_state(arg, vpkg_progress::DONE);
 
         xbps_object_t obj = xbps_dictionary_get(binpkgd, "run_depends");
+
         if (obj != NULL) {
             xbps_array_t arr = static_cast<xbps_array_t>(obj);
             xbps_object_iterator_t it = xbps_array_iterator(arr);
@@ -534,10 +532,10 @@ static void *vpkg_do_update_thread(void *arg_)
         }
 
         if ((arg->shared->packages_done += 1) >= arg->shared->packages_to_update->size()) {
-            sem_post(&arg->shared->sem_prod_cons);
             while (tqueue_put_node(&arg->shared->progress_queue, NULL) < 0) {
                 assert(errno == EINTR);
             }
+            sem_post(&arg->shared->sem_prod_cons);
         }
 
         sem_post(&arg->shared->sem_data);
