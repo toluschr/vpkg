@@ -595,6 +595,7 @@ static int state_cb(const struct xbps_state_cb_data *xscb, void *user_)
 static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update)
 {
     int rv = 0;
+    int npackagesmodified = 0;
     unsigned long maxthreads;
 
     struct vpkg_do_update_thread_shared_data shared;
@@ -750,102 +751,101 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
                 perror("pthread_join");
             }
         }
+    }
 
-        repodata_commit(shared.xhp, VPKG_BINPKGS, shared.idx, shared.idxmeta, shared.idxstage, NULL);
+    repodata_commit(shared.xhp, VPKG_BINPKGS, shared.idx, shared.idxmeta, shared.idxstage, NULL);
 
-        for (auto &binpkgd : shared.install_xbps) {
+    for (auto &binpkgd : shared.install_xbps) {
+        const char *pkgver;
+
+        if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "pkgver", &pkgver)) {
+            fprintf(stderr, "pkgver unset\n");
+            xbps_object_release(binpkgd);
+            continue;
+        }
+
+        if (update) {
+            rv = xbps_transaction_update_pkg(xhp, pkgver);
+        } else {
+            rv = xbps_transaction_install_pkg(xhp, pkgver, force_install);
+        }
+
+        // @todo: free vector
+        switch (rv) {
+        case 0:
+            xbps_object_release(binpkgd);
+            break;
+        case EEXIST:
+            // ignore already installed "packages may be updated"
+            fprintf(stderr, "%s: Already installed\n", pkgver);
+            xbps_object_release(binpkgd);
+            rv = 0;
+            continue;
+        case ENOENT:
+            fprintf(stderr, "%s: Not found in repository pool\n", pkgver);
+            xbps_object_release(binpkgd);
+            goto out_destroy_queue;
+        default:
+            fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
+            xbps_object_release(binpkgd);
+            goto out_destroy_queue;
+        }
+    }
+
+    rv = xbps_transaction_prepare(xhp);
+    switch (rv) {
+    case 0:
+        break;
+    case ENODEV:
+        fprintf(stderr, "Missing dependencies.\n");
+        goto out_destroy_queue;
+    default:
+        fprintf(stderr, "transaction_prepare: unexpected error: %d\n", rv);
+        goto out_destroy_queue;
+    }
+
+    if (xhp->transd) {
+        xbps_object_t obj;
+        xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "packages");
+
+        while ((obj = xbps_object_iterator_next(it)) != NULL) {
+            if (npackagesmodified++ == 0) {
+                printf("Summary of changes:\n");
+            }
+
+            xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
+            const char *pkgname;
             const char *pkgver;
 
-            if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "pkgver", &pkgver)) {
-                fprintf(stderr, "pkgver unset\n");
-                xbps_object_release(binpkgd);
-                continue;
-            }
+            assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname));
+            assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver));
 
-            if (update) {
-                rv = xbps_transaction_update_pkg(xhp, pkgver);
-            } else {
-                rv = xbps_transaction_install_pkg(xhp, pkgver, force_install);
-            }
+            pkgver = xbps_pkg_version(pkgver);
 
-            // @todo: free vector
-            switch (rv) {
-            case 0:
-                xbps_object_release(binpkgd);
-                break;
-            case EEXIST:
-                // ignore already installed "packages may be updated"
-                fprintf(stderr, "%s: Already installed\n", pkgver);
-                xbps_object_release(binpkgd);
-                rv = 0;
-                continue;
-            case ENOENT:
-                fprintf(stderr, "%s: Not found in repository pool\n", pkgver);
-                xbps_object_release(binpkgd);
-                goto out_destroy_queue;
-            default:
-                fprintf(stderr, "%s: Unexpected error: %d\n", pkgver, rv);
-                xbps_object_release(binpkgd);
-                goto out_destroy_queue;
-            }
+            printf("%s -> %s\n", pkgname, pkgver);
         }
 
-        rv = xbps_transaction_prepare(xhp);
-        switch (rv) {
-        case 0:
-            break;
-        case ENODEV:
-            fprintf(stderr, "Missing dependencies.\n");
-            goto out_destroy_queue;
-        default:
-            fprintf(stderr, "transaction_prepare: unexpected error: %d\n", rv);
-            goto out_destroy_queue;
-        }
+        xbps_object_iterator_release(it);
+    }
 
-        int nchanged = 0;
-        if (xhp->transd) {
-            xbps_object_t obj;
-            xbps_object_iterator_t it = xbps_array_iter_from_dict(xhp->transd, "packages");
+    if (npackagesmodified == 0) {
+        fprintf(stderr, "Nothing to do.\n");
+        goto out_destroy_queue;
+    }
 
-            while ((obj = xbps_object_iterator_next(it)) != NULL) {
-                if (nchanged++ == 0) {
-                    printf("Summary of changes:\n");
-                }
+    rv = yes_no_prompt() ? 0 : -1;
+    if (rv != 0) {
+        fprintf(stderr, "Aborting!\n");
+        goto out_destroy_queue;
+    }
 
-                xbps_dictionary_t dict = static_cast<xbps_dictionary_t>(obj);
-                const char *pkgname;
-                const char *pkgver;
-
-                assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgname", &pkgname));
-                assert(xbps_dictionary_get_cstring_nocopy(dict, "pkgver", &pkgver));
-
-                pkgver = xbps_pkg_version(pkgver);
-
-                printf("%s -> %s\n", pkgname, pkgver);
-            }
-
-            xbps_object_iterator_release(it);
-        }
-
-        if (nchanged == 0) {
-            fprintf(stderr, "Nothing to do.\n");
-            goto out_destroy_queue;
-        }
-
-        rv = yes_no_prompt() ? 0 : -1;
-        if (rv != 0) {
-            fprintf(stderr, "Aborting!\n");
-            goto out_destroy_queue;
-        }
-
-        rv = xbps_transaction_commit(xhp);
-        switch (rv) {
-        case 0:
-            break;
-        default:
-            fprintf(stderr, "Transaction failed: %d\n", rv);
-            break;
-        }
+    rv = xbps_transaction_commit(xhp);
+    switch (rv) {
+    case 0:
+        break;
+    default:
+        fprintf(stderr, "Transaction failed: %d\n", rv);
+        break;
     }
 
 out_destroy_queue:
