@@ -52,15 +52,13 @@ install:
 	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
 	install -m755 -t $(DESTDIR)/bin vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
 
-%.o: %.c
+%.o: %.c Makefile
 	$(CC) $(CC_FLAGS) -c -MMD $< -o $@
 
-%.o: %.cc
+%.o: %.cc Makefile
 	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
 
-%.o: %.cpp
+%.o: %.cpp Makefile
 	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
-
-%.o: Makefile
 
 -include $(DEP)
