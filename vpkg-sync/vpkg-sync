@@ -294,7 +294,7 @@ def process_single_source(name, source):
             if source.whitelist is not None and v.package not in source.whitelist:
                 continue
 
-            if source.blacklist is not None and v.package not in source.blacklist:
+            if source.blacklist is not None and v.package in source.blacklist:
                 continue
 
             manual_packages = source.packages if source.packages is not None else {}
