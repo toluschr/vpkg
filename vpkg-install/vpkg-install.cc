@@ -153,19 +153,14 @@ struct vpkg_do_update_thread_data {
     ::vpkg::config::iterator current;
 };
 
-static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *, void *user_, bool *)
+static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *pkgname, void *user_, bool *)
 {
-    const char *pkgname;
     xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(obj);
     vpkg_check_update_cb_data *user = static_cast<vpkg_check_update_cb_data *>(user_);
 
     assert(xbps_object_type(obj) == XBPS_TYPE_DICTIONARY);
 
     if (!is_xdeb(xpkg)) {
-        return 0;
-    }
-
-    if (!xbps_dictionary_get_cstring_nocopy(xpkg, "pkgname", &pkgname)) {
         return 0;
     }
 
