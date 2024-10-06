@@ -332,6 +332,7 @@ static void *vpkg_do_update_thread(void *arg_)
 
             *at = '\0';
             if (mkdir(deb_package_path, 0644) < 0 && errno != EEXIST) {
+                free_preserve_errno(deb_package_path);
                 return post_error(arg, "failed to create pkgroot: %s", strerror(errno));
             }
             *at = '/';
@@ -339,11 +340,14 @@ static void *vpkg_do_update_thread(void *arg_)
             {
                 char *url;
                 if (asprintf(&url, "%.*s", (int)arg->current->second.url.size(), arg->current->second.url.data()) < 0) {
+                    free_preserve_errno(deb_package_path);
                     return post_error(arg, "failed to format url: %s", strerror(ENOMEM));
                 }
 
                 FILE *f = fopen(deb_package_path, "w");
                 if (f == NULL) {
+                    free_preserve_errno(deb_package_path);
+                    free_preserve_errno(url);
                     return post_error(arg, "failed to open destination file: %s", strerror(errno));
                 }
 
@@ -355,6 +359,7 @@ static void *vpkg_do_update_thread(void *arg_)
 
             // download all packages first
             if (code != CURLE_OK) {
+                free_preserve_errno(deb_package_path);
                 return post_error(arg, "failed to download package: %s", curl_easy_strerror(code));
             }
 
@@ -362,6 +367,7 @@ static void *vpkg_do_update_thread(void *arg_)
 
             int stderr_pipefd[2];
             if (pipe(stderr_pipefd) < 0) {
+                free_preserve_errno(deb_package_path);
                 return post_error(arg, "failed to create stderr pipe: %s", strerror(errno));
             }
 
@@ -370,6 +376,7 @@ static void *vpkg_do_update_thread(void *arg_)
                 close(stderr_pipefd[0]);
                 close(stderr_pipefd[1]);
 
+                free_preserve_errno(deb_package_path);
                 return post_error(arg, "failed to create stdout pipe: %s", strerror(errno));
             }
 
@@ -378,9 +385,17 @@ static void *vpkg_do_update_thread(void *arg_)
                 int status;
 
             case -1:
+                close(stdout_pipefd[0]);
+                close(stderr_pipefd[0]);
+                close(stdout_pipefd[1]);
+                close(stderr_pipefd[1]);
+                free_preserve_errno(deb_package_path);
                 return post_error(arg, "failed to fork: %s", strerror(errno));
             case 0: {
                 char *not_deps, *version, *name, *deps;
+
+                close(stdout_pipefd[0]);
+                close(stderr_pipefd[0]);
 
                 if (dup2(stderr_pipefd[1], STDERR_FILENO) < 0) {
                     fprintf(stderr, "failed to pipe xdeb errors to vpkg\n");
@@ -403,10 +418,6 @@ static void *vpkg_do_update_thread(void *arg_)
                     fprintf(stderr, "failed to set environment variable XDEB_BINPKGS\n");
                     exit(EXIT_FAILURE);
                 }
-
-                // @todo: handle
-                close(stdout_pipefd[0]);
-                close(stderr_pipefd[0]);
 
                 if (asprintf(&not_deps, "--not-deps=%.*s", (int)arg->current->second.not_deps.size(), arg->current->second.not_deps.data()) < 0 ||
                     asprintf(&deps, "--deps=%.*s", (int)arg->current->second.deps.size(), arg->current->second.deps.data()) < 0 ||
@@ -439,6 +450,9 @@ static void *vpkg_do_update_thread(void *arg_)
 
                 bool failed = !WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS;
                 buf = read_all_null_no_tr_nl(failed ? stderr_pipefd[0] : stdout_pipefd[0], &len);
+
+                close(stdout_pipefd[0]);
+                close(stderr_pipefd[0]);
 
                 if (failed) {
                     if (buf == NULL) {
