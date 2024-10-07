@@ -124,3 +124,8 @@ int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg)
     return -1;
 }
 
+void perror_exit(const char *msg)
+{
+    perror(msg);
+    exit(EXIT_FAILURE);
+}

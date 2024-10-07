@@ -6,16 +6,11 @@
 #include "vpkg/config.hh"
 #include "vpkg/defs.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 bool is_xdeb(xbps_dictionary_t dict);
 bool yes_no_prompt(void);
 int xbps_vpkg_gtver(xbps_dictionary_t xpkg, const vpkg::package *vpkg);
 
-#ifdef __cplusplus
-}
-#endif
+__attribute__((noreturn))
+void perror_exit(const char *msg);
 
 #endif // VPKG_UTIL_H_

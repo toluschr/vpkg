@@ -33,12 +33,6 @@
 #include <atomic>
 #include <vector>
 
-static void die(const char *message)
-{
-    perror(message);
-    exit(EXIT_FAILURE);
-}
-
 static void usage(int code)
 {
     fprintf(stderr, "usage: vpkg [-vfRu] [-c <config_path>]\n");
@@ -926,17 +920,17 @@ int main(int argc, char **argv)
 
     config_fd = open(config_path, O_RDONLY);
     if (config_fd < 0) {
-        die("unable to open config file");
+        perror_exit("unable to open config file");
     }
 
     if (fstat(config_fd, &st) < 0) {
-        die("unable to stat config file");
+        perror_exit("unable to stat config file");
     }
 
     if (st.st_size != 0) {
         data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, config_fd, 0);
         if (data == MAP_FAILED) {
-            die("unable to map config file");
+            perror_exit("unable to map config file");
         }
 
         if (vpkg::parse_config(&config, static_cast<const char *>(data), st.st_size) != 0) {
