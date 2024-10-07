@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#include "vpkg/defs.h"
-
 bool repodata_flush(struct xbps_handle *xhp, const char *repodir,
                     const char *reponame, xbps_dictionary_t idx,
                     xbps_dictionary_t meta, const char *compression)

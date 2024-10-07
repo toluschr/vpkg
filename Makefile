@@ -1,3 +1,5 @@
+include config.mk
+
 DESTDIR := /usr/local
 
 CC := gcc
@@ -27,9 +29,13 @@ DEP = $(OBJ:%.o=%.d)
 
 .PHONY: all, clean, install
 
-all: vpkg-install/vpkg-install vpkg-query/vpkg-query
+all: vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-sync/vpkg-sync
+
+vpkg-sync/vpkg-sync: vpkg-sync/vpkg-sync.py
+	install -m 0755 $< $@
 
 vpkg-install/vpkg-install: \
+	vpkg/config.hh \
 	vpkg-install/repodata.o \
 	vpkg-install/vpkg-install.o \
 	tqueue/tqueue.o \
@@ -39,6 +45,7 @@ vpkg-install/vpkg-install: \
 	$(CXX) $(LD_FLAGS) $^ -o $@
 
 vpkg-query/vpkg-query: \
+	vpkg/config.hh \
 	vpkg-query/vpkg-query.o \
 	simdini/ini.o \
 	vpkg/config.o \
@@ -46,7 +53,7 @@ vpkg-query/vpkg-query: \
 	$(CXX) $(LD_FLAGS) $^ -o $@
 
 clean:
-	-rm -f vpkg-install/vpkg-install vpkg-query/vpkg-query $(OBJ) $(DEP)
+	-rm -f vpkg/config.hh vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-sync/vpkg-sync vpkg-sync/vpkg-sync.py $(OBJ) $(DEP)
 
 install:
 	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
@@ -60,5 +67,15 @@ install:
 
 %.o: %.cpp Makefile
 	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
+
+%: %.in Makefile config.mk
+	sed -e 's|@@VPKG_REVISION@@|$(VPKG_REVISION)|g' \
+	    -e 's|@@VPKG_TEMPDIR_PATH@@|$(VPKG_TEMPDIR_PATH)|g' \
+	    -e 's|@@VPKG_BINPKGS_PATH@@|$(VPKG_BINPKGS_PATH)|g' \
+	    -e 's|@@VPKG_INSTALL_CONFIG_PATH@@|$(VPKG_INSTALL_CONFIG_PATH)|g' \
+	    -e 's|@@VPKG_XDEB_SHLIBS_PATH@@|$(VPKG_XDEB_SHLIBS_PATH)|g' \
+	    -e 's|@@VPKG_SYNC_CONFIG_PATH@@|$(VPKG_SYNC_CONFIG_PATH)|g' $< > $@
+
+	# m4 -D M4_VPKG_SYNC_CONFIG_PATH=/etc/vpkg-sync.toml -D M4_VPKG_INSTALL_CONFIG_PATH=/etc/vpkg-install.ini -D M4_XDEB_SHLIBS_PATH=/var/lib/vpkg/shlibs -P $< > $@
 
 -include $(DEP)

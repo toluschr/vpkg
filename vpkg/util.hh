@@ -4,7 +4,6 @@
 #include <xbps.h>
 
 #include "vpkg/config.hh"
-#include "vpkg/defs.h"
 
 bool is_xdeb(xbps_dictionary_t dict);
 bool yes_no_prompt(void);

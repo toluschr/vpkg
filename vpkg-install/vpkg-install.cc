@@ -492,6 +492,7 @@ static void *vpkg_do_update_thread(void *arg_)
                     continue;
                 }
 
+                // Don't install packages that are provided by xbps
                 xbps_dictionary_t xpkg = static_cast<xbps_dictionary_t>(xbps_dictionary_get(arg->shared->xhp->pkgdb, name));
                 if (xpkg != NULL && (!is_xdeb(xpkg) || xbps_vpkg_gtver(xpkg, &it->second) != 1)) {
                     continue;

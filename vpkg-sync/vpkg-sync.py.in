@@ -81,7 +81,7 @@ class DebianPackage():
 
 
 def load_shlibs_mapping() -> dict[str, str]:
-    with open("/var/lib/vpkg/shlibs", "r") as shlibs_file:
+    with open("@@VPKG_XDEB_SHLIBS_PATH@@", "r") as shlibs_file:
         shlibs_data = shlibs_file.read()
 
         out = dict()
@@ -398,13 +398,13 @@ DEBIAN_BINARY = f"binary-{machine}"
 # @todo: Don't output in critical section. Use queue.
 print_lock = threading.Lock()
 data_lock = threading.Lock()
-vpkg_config_file = open("/etc/vpkg-install.ini", "w+")
+vpkg_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "w+")
 
 if __name__ == '__main__':
-    with open("/etc/vpkg-sync.toml", "rb") as config_file:
+    with open("@@VPKG_SYNC_CONFIG_PATH@@", "rb") as config_file:
         p = tomllib.load(config_file)
 
-    os.environ["XDEB_SHLIBS"] = "/var/lib/vpkg/shlibs"
+    os.environ["XDEB_SHLIBS"] = "@@VPKG_XDEB_SHLIBS_PATH@@"
     subprocess.run(["xdeb", "-SQ"])
 
     shlibs = load_shlibs_mapping()
@@ -435,7 +435,7 @@ if __name__ == '__main__':
         for i in range(0, numthreads):
             threads[i].join()
 
-    with open("/var/lib/vpkg/shlibs", "w") as shlibs_file:
+    with open("@@VPKG_XDEB_SHLIBS_PATH@@", "w") as shlibs_file:
         shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
 
     vpkg_config_file.close()

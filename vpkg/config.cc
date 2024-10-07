@@ -1,5 +1,4 @@
 #include "vpkg/config.hh"
-#include "vpkg/defs.h"
 
 #include <unistd.h>
 #include <string.h>
