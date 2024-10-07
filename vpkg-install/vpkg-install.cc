@@ -196,8 +196,7 @@ static void *post_error(struct vpkg_do_update_thread_data *self, const char *fmt
 
     auto node = (struct tqueue_node *)malloc(tqueue_sizeof(struct vpkg_progress));
     if (node == NULL) {
-        perror("ran out of memory during error handling");
-        exit(EXIT_FAILURE);
+        perror_exit("ran out of memory during error handling");
         return NULL;
     }
 
@@ -209,9 +208,8 @@ static void *post_error(struct vpkg_do_update_thread_data *self, const char *fmt
 
     va_start(va, fmt);
     if (vasprintf(&data->error_message, fmt, va) < 0) {
-        free(node);
-        perror("ran out of memory during error handling");
-        exit(EXIT_FAILURE);
+        free_preserve_errno(node);
+        perror_exit("ran out of memory during error handling");
         return NULL;
     }
     va_end(va);
