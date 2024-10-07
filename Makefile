@@ -8,9 +8,6 @@ CC_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb
 CXX := g++
 CXX_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb -fpermissive -std=c++20
 
-CC_FLAGS += -DVPKG_REVISION='"$(shell git rev-parse --short HEAD)"'
-CXX_FLAGS += -DVPKG_REVISION='"$(shell git rev-parse --short HEAD)"'
-
 LD_FLAGS += -lcurl -lxbps -larchive
 
 OBJ += vpkg-install/repodata.o
