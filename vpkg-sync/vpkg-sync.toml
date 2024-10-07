@@ -74,12 +74,22 @@ name = "figma-linux"
 
 # debian packages
 [sources.debian]
-base_url = "http://ftp.de.debian.org"
+base_url = "https://deb.debian.org"
 distribution = "debian"
-components = ["bookworm", "main"]
+components = ["unstable", "main"]
 
-[sources.debian.packages.kodi]
-deps = ["kodi-bin>=0", "kodi-data>=0"]
+[sources.debian.packages.prusa-slicer]
+deps = ["libwxgtk3.2-1t64-debian>=0",
+        "libwxgtk-webview3.2-1t64-debian>=0",
+        "libwxgtk-gl3.2-1t64-debian>=0",
+        "libwxbase3.2-1t64-debian>=0",
+        "libstdc++6-debian>=0",
+        "libjpeg62-turbo-debian>=0"]
+not_deps = ["libjpeg62-debian"]
+
+[sources.debian.packages."libwxgtk3.2-1t64-debian"]
+deps = ["libjpeg62-turbo-debian>=0"]
+not_deps = ["libjpeg62-debian"]
 
 
 # gitkraken
