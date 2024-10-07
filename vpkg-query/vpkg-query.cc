@@ -15,7 +15,7 @@
 
 static void usage(int code)
 {
-    fprintf(stderr, "usage: vpkg-query [-R] [-lv] <pkgname>\n");
+    fprintf(stderr, "usage: vpkg-query [-c <config_path>] [-R] [-lv] <pkgname>\n");
     exit(code);
 }
 
