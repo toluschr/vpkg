@@ -39,13 +39,6 @@ static void usage(int code)
     exit(code);
 }
 
-static void free_preserve_errno(void *ptr)
-{
-    int e = errno;
-    free(ptr);
-    errno = e;
-}
-
 static char *read_all_null_no_tr_nl(int fd, size_t *length)
 {
     char *buf = NULL;

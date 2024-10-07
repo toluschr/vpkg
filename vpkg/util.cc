@@ -129,3 +129,10 @@ void perror_exit(const char *msg)
     perror(msg);
     exit(EXIT_FAILURE);
 }
+
+void free_preserve_errno(void *ptr)
+{
+    int e = errno;
+    free(ptr);
+    errno = e;
+}
