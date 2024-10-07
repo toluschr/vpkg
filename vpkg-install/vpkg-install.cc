@@ -35,7 +35,7 @@
 
 static void usage(int code)
 {
-    fprintf(stderr, "usage: vpkg [-vfRu] [-c <config_path>]\n");
+    fprintf(stderr, "usage: vpkg-install [-vfRu] [-c <config_path>]\n");
     exit(code);
 }
 
