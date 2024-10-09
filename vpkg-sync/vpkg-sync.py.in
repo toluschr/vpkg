@@ -366,14 +366,14 @@ def process_single_source(name, source):
             print(f"{name}: No URL, skipping.", file=sys.stderr)
             return
 
-        response = requests.head(source.url, allow_redirects=True)
-        t = datetime.strptime(response.headers["last-modified"],
-                              "%a, %d %b %Y %H:%M:%S %Z")
-
         if source.name is None:
             source.name = name
 
         if source.last_modified is None:
+            response = requests.head(source.url, allow_redirects=True)
+            t = datetime.strptime(response.headers["last-modified"],
+                                  "%a, %d %b %Y %H:%M:%S %Z")
+
             source.last_modified = t
 
         print_package(source)
