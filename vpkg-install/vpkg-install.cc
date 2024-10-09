@@ -566,7 +566,7 @@ static int state_cb(const struct xbps_state_cb_data *xscb, void *user_)
     return 0;
 }
 
-static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update)
+static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update, bool install)
 {
     int rv = 0;
     int npackagesmodified = 0;
@@ -781,6 +781,10 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
         }
     }
 
+    if (!install) {
+        goto out_destroy_queue;
+    }
+
     rv = xbps_transaction_prepare(xhp);
     switch (rv) {
     case 0:
@@ -872,6 +876,7 @@ int main(int argc, char **argv)
 {
     bool force = false;
     bool update = false;
+    bool install = true;
 
     const char *config_path = VPKG_CONFIG_PATH;
     vpkg::config config;
@@ -888,8 +893,11 @@ int main(int argc, char **argv)
     memset(&xh, 0, sizeof(xh));
     curl_global_init(CURL_GLOBAL_ALL);
 
-    while ((opt = getopt(argc, argv, ":c:vfu")) != -1) {
+    while ((opt = getopt(argc, argv, ":c:vfuN")) != -1) {
         switch (opt) {
+        case 'N':
+            install = false;
+            break;
         case 'u':
             update = true;
             break;
@@ -994,7 +1002,7 @@ int main(int argc, char **argv)
         goto end_xbps_lock;
     }
 
-    if (::download_and_install_multi(&xh, &config, &to_install, force, update) != 0) {
+    if (::download_and_install_multi(&xh, &config, &to_install, force, update, install) != 0) {
         ;
     }
 
