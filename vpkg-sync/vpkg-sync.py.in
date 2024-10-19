@@ -262,9 +262,14 @@ def process_single_source(name, source):
     if isinstance(source, DebianSource):
         parts = urllib.parse.urlparse(source.base_url)
         base_path = pathlib.Path(parts.path if parts.path else "/")
-        distribution_path = base_path/source.distribution
-        dists_path = distribution_path/"dists"
-        binary_path = dists_path/'/'.join(source.components)/DEBIAN_BINARY
+
+        if source.distribution == "/":
+            distribution_path = base_path
+            binary_path = distribution_path
+        else:
+            distribution_path = base_path/source.distribution
+            dists_path = distribution_path/"dists"
+            binary_path = dists_path/'/'.join(source.components)/DEBIAN_BINARY
 
         try_fetch = [(binary_path/"Packages.xz", lambda d:
                       lzma.decompress(d)),
