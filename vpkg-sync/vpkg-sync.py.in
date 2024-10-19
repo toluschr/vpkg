@@ -343,7 +343,11 @@ def process_single_source(name, source):
                                        "",
                                        ""))
 
-        response = requests.get(url)
+        headers = {}
+        if config.github_token is not None:
+            headers["Authorization"] = f"Bearer {config.github_token}"
+
+        response = requests.get(url, headers=headers)
         release = TypeAdapter(GithubRelease).validate_python(response.json())
 
         for k in source.packages.keys():
