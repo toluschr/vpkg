@@ -58,7 +58,7 @@ class DebianSource():
     packages: Optional[dict[str, PackageSpec]] = None
     whitelist: Optional[list[str]] = None
     blacklist: Optional[list[str]] = None
-    whitelist_autoappend: bool = False
+    auto_deps: bool = False
 
 
 @dataclass
@@ -95,8 +95,12 @@ def load_shlibs_mapping() -> dict[str, str]:
         return out
 
 
+def is_library(name: str) -> bool:
+    return re.match(r"^lib.*", name) is not None
+
+
 def rename_library(old_name: str) -> str:
-    return re.sub(r"(lib.*)", r"\1-debian", old_name)
+    return re.sub(r"^(lib.*)", r"\1-debian", old_name)
 
 
 # This probably has a lot of bugs.
@@ -293,18 +297,31 @@ def process_single_source(name, source):
             print(f"{name}: request failed", file=sys.stderr)
             return
 
-        packages = parse_debian_package(content)
+        packages = []
+        cnt = True
+
+        while cnt:
+            cnt = False
+
+            for p in parse_debian_package(content):
+                p.package = rename_library(p.package)
+                p.depends = [d for d in p.depends if not is_library(d) and (not source.blacklist or d not in source.blacklist)]
+
+                if source.whitelist is not None and p.package not in source.whitelist:
+                    continue
+
+                if source.blacklist is not None and p.package in source.blacklist:
+                    continue
+
+                if source.whitelist is not None and source.auto_deps:
+                    to_add = set(p.depends) - set(source.whitelist)
+                    cnt = len(to_add) > 0
+                    source.whitelist += to_add
+
+                packages.append(p)
 
         for v in packages:
             possible_shlibs = guess_shlibs_from_pkgname(v.package)
-            v.package = rename_library(v.package)
-
-            if source.whitelist is not None and v.package not in source.whitelist:
-                continue
-
-            if source.blacklist is not None and v.package in source.blacklist:
-                continue
-
             manual_packages = source.packages if source.packages is not None else {}
 
             deb_path = distribution_path/v.filename
@@ -315,15 +332,22 @@ def process_single_source(name, source):
                                                "",
                                                ""))
 
-            p = manual_packages.setdefault(v.package, PackageSpec(name=None,
-                                                                  not_deps=None,
-                                                                  deps=None,
-                                                                  url=None,
-                                                                  last_modified=None,
-                                                                  version=None))
+            p = manual_packages.setdefault(
+                v.package,
+                PackageSpec(
+                    name=None,
+                    not_deps=None,
+                    deps=None,
+                    url=None,
+                    last_modified=None,
+                    version=None
+                )
+            )
+
             p.name = p.name if p.name is not None else v.package
             p.url = p.url if p.url is not None else deb_url
             p.version = p.version if p.version is not None else debian_version_to_xbps(v.version)
+            p.deps = p.deps if p.deps is not None else [f"{d}>=0" for d in v.depends if not is_library(d) and (not source.whitelist or d in source.whitelist) and (not source.blacklist or d not in source.blacklist)]
 
             print_package(p)
 
