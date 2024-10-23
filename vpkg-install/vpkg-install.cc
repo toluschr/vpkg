@@ -380,7 +380,7 @@ static void *vpkg_do_update_thread(void *arg_)
                 free_preserve_errno(deb_package_path);
                 return post_error(arg, "failed to fork: %s", strerror(errno));
             case 0: {
-                char *not_deps, *version, *name, *deps;
+                char *not_deps, *version, *name, *deps, *replaces, *provides;
 
                 close(stdout_pipefd[0]);
                 close(stderr_pipefd[0]);
@@ -409,6 +409,8 @@ static void *vpkg_do_update_thread(void *arg_)
 
                 if (asprintf(&not_deps, "--not-deps=%.*s", (int)arg->current->second.not_deps.size(), arg->current->second.not_deps.data()) < 0 ||
                     asprintf(&deps, "--deps=%.*s", (int)arg->current->second.deps.size(), arg->current->second.deps.data()) < 0 ||
+                    asprintf(&replaces, "--replaces=%.*s", (int)arg->current->second.replaces.size(), arg->current->second.replaces.data()) < 0 ||
+                    asprintf(&provides, "--provides=%.*s", (int)arg->current->second.provides.size(), arg->current->second.provides.data()) < 0 ||
                     asprintf(&name, "--name=%.*s", (int)arg->current->first.size(), arg->current->first.data()) < 0 ||
                     asprintf(&version, "--version=%.*s", (int)arg->current->second.version.size(), arg->current->second.version.data()) < 0) {
                     // no free in child process
@@ -416,7 +418,7 @@ static void *vpkg_do_update_thread(void *arg_)
                     exit(EXIT_FAILURE);
                 }
 
-                execlp("xdeb", "xdeb", "-edRL", not_deps, deps, name, version, "--", deb_package_path, NULL);
+                execlp("xdeb", "xdeb", "-edRL", not_deps, deps, name, version, replaces, provides, "--", deb_package_path, NULL);
                 fprintf(stderr, "failed to execute xdeb binary\n");
                 exit(EXIT_FAILURE);
                 break;

@@ -48,6 +48,10 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
             iterator->second.deps = value;
         } else if (key == "not_deps") {
             iterator->second.not_deps = value;
+        } else if (key == "replaces") {
+            iterator->second.replaces = value;
+        } else if (key == "provides") {
+            iterator->second.provides = value;
         } else if (key == "last_modified") {
             char *end;
             int eno = errno;
