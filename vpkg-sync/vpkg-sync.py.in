@@ -35,6 +35,8 @@ class PackageSpec():
     version: Optional[str] = None
     last_modified: Optional[str | datetime] = None
     deps: Optional[list[str]] = None
+    replaces: Optional[list[str]] = None
+    provides: Optional[list[str]] = None
 
 
 @dataclass
@@ -77,6 +79,8 @@ class DebianPackage():
     package: str
     version: str
     depends: list[str]
+    replaces: list[str]
+    provides: list[str]
     filename: str
 
 
@@ -215,10 +219,22 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
             key, value = entry_string.split(": ", 1)
             package[key.lower()] = value
 
+        package["package"] = rename_library(package["package"])
+
         if "depends" in package:
-            package["depends"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["depends"])]
+            package["depends"] = [rename_library(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["depends"])]
         else:
             package["depends"] = []
+
+        if "replaces" in package:
+            package["replaces"] = [rename_library(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["replaces"])]
+        else:
+            package["replaces"] = []
+
+        if "provides" in package:
+            package["provides"] = [rename_library(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["provides"])]
+        else:
+            package["provides"] = []
 
         packages.append(TypeAdapter(DebianPackage).validate_python(package))
 
@@ -237,14 +253,17 @@ def print_package(p: PackageSpec):
         if p.url is not None:
             print(f"url = {p.url}", file=vpkg_config_file)
 
-        if p.deps is not None:
+        if p.deps:
             print(f"deps = {' '.join(p.deps)}", file=vpkg_config_file)
 
-        if p.not_deps is not None:
+        if p.not_deps:
             print(f"not_deps = {' '.join(p.not_deps)}", file=vpkg_config_file)
 
-        # if p.version is not None:
-        #     print(f"version = {p.version}", file=vpkg_config_file)
+        if p.replaces:
+            print(f"replaces = {' '.join(p.replaces)}", file=vpkg_config_file)
+
+        if p.provides:
+            print(f"provides = {' '.join(p.provides)}", file=vpkg_config_file)
 
         if p.last_modified is not None:
             assert isinstance(p.last_modified, datetime)
@@ -262,6 +281,10 @@ def debian_version_to_xbps(version: str) -> str:
 def process_single_source(name, source):
     global machine, shlibs
     print(f"Syncing {name}", file=sys.stderr)
+
+    def should_ignore(name: str) -> bool:
+        return (source.whitelist and name not in source.whitelist) or \
+               (source.blacklist and name in source.blacklist)
 
     if isinstance(source, DebianSource):
         parts = urllib.parse.urlparse(source.base_url)
@@ -304,13 +327,7 @@ def process_single_source(name, source):
             cnt = False
 
             for p in parse_debian_package(content):
-                p.package = rename_library(p.package)
-                p.depends = [d for d in p.depends if not is_library(d) and (not source.blacklist or d not in source.blacklist)]
-
-                if source.whitelist is not None and p.package not in source.whitelist:
-                    continue
-
-                if source.blacklist is not None and p.package in source.blacklist:
+                if should_ignore(p.package):
                     continue
 
                 if source.whitelist is not None and source.auto_deps:
@@ -332,22 +349,14 @@ def process_single_source(name, source):
                                                "",
                                                ""))
 
-            p = manual_packages.setdefault(
-                v.package,
-                PackageSpec(
-                    name=None,
-                    not_deps=None,
-                    deps=None,
-                    url=None,
-                    last_modified=None,
-                    version=None
-                )
-            )
+            p = manual_packages.setdefault(v.package, PackageSpec())
 
             p.name = p.name if p.name is not None else v.package
             p.url = p.url if p.url is not None else deb_url
             p.version = p.version if p.version is not None else debian_version_to_xbps(v.version)
-            p.deps = p.deps if p.deps is not None else [f"{d}>=0" for d in v.depends if not is_library(d) and (not source.whitelist or d in source.whitelist) and (not source.blacklist or d not in source.blacklist)]
+            p.deps = p.deps if p.deps is not None else [f"{d}>=0" for d in v.depends if not (is_library(d) or should_ignore(d))]
+            p.replaces = p.replaces if p.replaces is not None else [f"{d}>=0" for d in v.replaces if not should_ignore(d)]
+            p.provides = p.provides if p.provides is not None else [f"{d}-{p.version}" for d in v.provides if not should_ignore(d)]
 
             print_package(p)
 
