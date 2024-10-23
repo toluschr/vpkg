@@ -1,0 +1,9 @@
+./vpkg-sync/vpkg-sync
+./vpkg-sync/vpkg-sync.py
+./vpkg-locate/vpkg-locate
+./vpkg-locate/vpkg-locate.py
+
+./vpkg/config.hh
+
+./vpkg-query/vpkg-query
+./vpkg-install/vpkg-install

@@ -26,7 +26,10 @@ DEP = $(OBJ:%.o=%.d)
 
 .PHONY: all, clean, install
 
-all: vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-sync/vpkg-sync
+all: vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync
+
+vpkg-locate/vpkg-locate: vpkg-locate/vpkg-locate.py
+	install -m 0755 $< $@
 
 vpkg-sync/vpkg-sync: vpkg-sync/vpkg-sync.py
 	install -m 0755 $< $@
@@ -54,7 +57,7 @@ clean:
 
 install:
 	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
-	install -m755 -t $(DESTDIR)/bin vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
+	install -m755 -t $(DESTDIR)/bin vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
 
 %.o: %.c Makefile
 	$(CC) $(CC_FLAGS) -c -MMD $< -o $@
