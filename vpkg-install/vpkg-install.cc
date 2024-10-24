@@ -53,7 +53,7 @@ static char *read_all_null_no_tr_nl(int fd, size_t *length)
 
         buf = new_buf;
 
-        ssize_t nr = read(fd, buf, BUFSIZ);
+        ssize_t nr = read(fd, buf + bufsz, BUFSIZ);
         if (nr < 0) {
             free_preserve_errno(buf);
             return NULL;
