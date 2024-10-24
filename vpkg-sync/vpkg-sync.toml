@@ -1,3 +1,30 @@
+# libgconf-2-4
+[sources.debian-buster]
+base_url = "https://deb.debian.org"
+distribution = "debian"
+components = ["buster", "main"]
+whitelist = ["libgconf-2-4-deb", "gconf2-common"]
+
+
+# prusa slicer
+[sources.debian-unstable]
+base_url = "https://deb.debian.org"
+distribution = "debian"
+components = ["unstable", "main"]
+blacklist = ["libjpeg62-deb"]
+
+[sources.debian-unstable.packages.prusa-slicer]
+deps = ["libwxgtk3.2-1t64-deb>=0",
+        "libwxgtk-webview3.2-1t64-deb>=0",
+        "libwxgtk-gl3.2-1t64-deb>=0",
+        "libwxbase3.2-1t64-deb>=0",
+        "libstdc++6-deb>=0",
+        "libjpeg62-turbo-deb>=0"]
+
+[sources.debian-unstable.packages."libwxgtk3.2-1t64-deb"]
+deps = ["libjpeg62-turbo-deb>=0"]
+
+
 # ungoogled chromium
 [sources.ungoogled-chromium-debian]
 repository = "berkley4/ungoogled-chromium-debian"
@@ -70,26 +97,6 @@ repository = "Figma-Linux/figma-linux"
 
 [sources.figma-linux.packages."figma-linux*amd64.deb"]
 name = "figma-linux"
-
-
-# debian packages
-[sources.debian]
-base_url = "https://deb.debian.org"
-distribution = "debian"
-components = ["unstable", "main"]
-
-[sources.debian.packages.prusa-slicer]
-deps = ["libwxgtk3.2-1t64-debian>=0",
-        "libwxgtk-webview3.2-1t64-debian>=0",
-        "libwxgtk-gl3.2-1t64-debian>=0",
-        "libwxbase3.2-1t64-debian>=0",
-        "libstdc++6-debian>=0",
-        "libjpeg62-turbo-debian>=0"]
-not_deps = ["libjpeg62-debian"]
-
-[sources.debian.packages."libwxgtk3.2-1t64-debian"]
-deps = ["libjpeg62-turbo-debian>=0"]
-not_deps = ["libjpeg62-debian"]
 
 
 # gitkraken
