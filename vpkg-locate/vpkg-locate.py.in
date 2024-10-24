@@ -1,0 +1,33 @@
+#!/bin/env python3
+import re
+import sys
+import argparse
+
+# TODO: Use library for helper functions
+def load_shlibs_mapping() -> dict[str, str]:
+    with open("@@VPKG_XDEB_SHLIBS_PATH@@", "r") as shlibs_file:
+        shlibs_data = shlibs_file.read()
+
+        out = dict()
+        for line in shlibs_data.strip().split('\n'):
+            if line.strip()[0] == '#':
+                continue
+
+            key, val = line.split(' ')[:2]
+            out[key] = val
+
+        return out
+
+
+parser = argparse.ArgumentParser(
+    prog="vpkg-locate",
+    description="Locate vpkgs by provided shlibs using a regular expression")
+parser.add_argument("regex", help="Regular expression")
+
+args = parser.parse_args()
+
+shlibs = load_shlibs_mapping()
+
+for sh, lib in shlibs.items():
+    if (ma := re.match(args.regex, sh)) is not None:
+        print(sh, lib)
