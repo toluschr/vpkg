@@ -76,6 +76,7 @@ class Config():
 
 @dataclass
 class DebianPackage():
+    name: str
     package: str
     version: str
     depends: list[str]
@@ -103,8 +104,8 @@ def is_library(name: str) -> bool:
     return re.match(r"^lib.*", name) is not None
 
 
-# def rename_library(old_name: str) -> str:
-#     return re.sub(r"^(lib.*)", r"\1-debian", old_name)
+def renaming_rules(old_name: str) -> str:
+    return re.sub(r"^(lib.*)", r"\1-deb", old_name)
 
 
 # This probably has a lot of bugs.
@@ -220,19 +221,20 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
             package[key.lower()] = value
 
         package["package"] = package["package"]
+        package["name"] = renaming_rules(package["package"])
 
         if "depends" in package:
-            package["depends"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["depends"])]
+            package["depends"] = [renaming_rules(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["depends"])]
         else:
             package["depends"] = []
 
         if "replaces" in package:
-            package["replaces"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["replaces"])]
+            package["replaces"] = [renaming_rules(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["replaces"])]
         else:
             package["replaces"] = []
 
         if "provides" in package:
-            package["provides"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["provides"])]
+            package["provides"] = [renaming_rules(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["provides"])]
         else:
             package["provides"] = []
 
@@ -327,7 +329,7 @@ def process_single_source(name, source):
             cnt = False
 
             for p in packages:
-                if should_ignore(p.package):
+                if should_ignore(p.name):
                     continue
 
                 if source.whitelist is not None and source.auto_deps:
@@ -336,7 +338,7 @@ def process_single_source(name, source):
                     source.whitelist += to_add
 
         for v in packages:
-            if should_ignore(v.package):
+            if should_ignore(v.name):
                 continue
 
             possible_shlibs = guess_shlibs_from_pkgname(v.package)
@@ -350,9 +352,9 @@ def process_single_source(name, source):
                                                "",
                                                ""))
 
-            p = manual_packages.setdefault(v.package, PackageSpec())
+            p = manual_packages.setdefault(v.name, PackageSpec())
 
-            p.name = p.name if p.name is not None else v.package
+            p.name = p.name if p.name is not None else v.name
             p.url = p.url if p.url is not None else deb_url
             p.version = p.version if p.version is not None else debian_version_to_xbps(v.version)
             p.deps = p.deps if p.deps is not None else [f"{d}>=0" for d in v.depends if not (is_library(d) or should_ignore(d))]
