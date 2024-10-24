@@ -103,8 +103,8 @@ def is_library(name: str) -> bool:
     return re.match(r"^lib.*", name) is not None
 
 
-def rename_library(old_name: str) -> str:
-    return re.sub(r"^(lib.*)", r"\1-debian", old_name)
+# def rename_library(old_name: str) -> str:
+#     return re.sub(r"^(lib.*)", r"\1-debian", old_name)
 
 
 # This probably has a lot of bugs.
@@ -219,20 +219,20 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
             key, value = entry_string.split(": ", 1)
             package[key.lower()] = value
 
-        package["package"] = rename_library(package["package"])
+        package["package"] = package["package"]
 
         if "depends" in package:
-            package["depends"] = [rename_library(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["depends"])]
+            package["depends"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["depends"])]
         else:
             package["depends"] = []
 
         if "replaces" in package:
-            package["replaces"] = [rename_library(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["replaces"])]
+            package["replaces"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["replaces"])]
         else:
             package["replaces"] = []
 
         if "provides" in package:
-            package["provides"] = [rename_library(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["provides"])]
+            package["provides"] = [re.sub(" .*", "", p) for p in re.split(", | \\| ", package["provides"])]
         else:
             package["provides"] = []
 
@@ -320,13 +320,13 @@ def process_single_source(name, source):
             print(f"{name}: request failed", file=sys.stderr)
             return
 
-        packages = []
+        packages = parse_debian_package(content)
         cnt = True
 
         while cnt:
             cnt = False
 
-            for p in parse_debian_package(content):
+            for p in packages:
                 if should_ignore(p.package):
                     continue
 
@@ -335,9 +335,10 @@ def process_single_source(name, source):
                     cnt = len(to_add) > 0
                     source.whitelist += to_add
 
-                packages.append(p)
-
         for v in packages:
+            if should_ignore(v.package):
+                continue
+
             possible_shlibs = guess_shlibs_from_pkgname(v.package)
             manual_packages = source.packages if source.packages is not None else {}
 
