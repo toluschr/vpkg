@@ -47,11 +47,8 @@ int main(int argc, char **argv)
 
     vpkg::config config;
     struct xbps_handle xh;
-    void *data = NULL;
-    struct stat st;
     int rv = EXIT_FAILURE;
     int ch;
-    int config_fd;
 
     memset(&xh, 0, sizeof(xh));
 
@@ -84,25 +81,9 @@ int main(int argc, char **argv)
         filter_pkgname_length = strlen(argv[0]);
     }
 
-    config_fd = open(config_path, O_RDONLY);
-    if (config_fd < 0) {
-        perror_exit("unable to open config file");
-    }
-
-    if (fstat(config_fd, &st) < 0) {
-        perror_exit("unable to stat config file");
-    }
-
-    if (st.st_size != 0) {
-        data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, config_fd, 0);
-        if (data == MAP_FAILED) {
-            perror_exit("unable to map config file");
-        }
-
-        if (vpkg::parse_config(&config, static_cast<const char *>(data), st.st_size) != 0) {
-            fprintf(stderr, "unable to parse config file\n");
-            goto end_munmap;
-        }
+    if (vpkg::config_init(&config, config_path) != 0) {
+        perror("failed to parse config file");
+        goto end_munmap;
     }
 
     if ((errno = xbps_init(&xh)) != 0) {
@@ -111,7 +92,7 @@ int main(int argc, char **argv)
     }
 
     if (list && repository) {
-        for (auto &it : config) {
+        for (auto &it : config.packages) {
             if (!filter_pkgname || memmem(it.first.data(), it.first.size(), filter_pkgname, filter_pkgname_length)) {
                 fprintf(stderr, "%.*s\n", (int)it.first.size(), it.first.data());
             }
@@ -130,11 +111,7 @@ end_xbps:
     xbps_end(&xh);
 
 end_munmap:
-    if (data != NULL) {
-        munmap(data, st.st_size);
-    }
-
-    close(config_fd);
+    vpkg::config_fini(&config);
 
 out:
     return rv;

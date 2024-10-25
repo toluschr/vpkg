@@ -1,15 +1,20 @@
 #include "vpkg/config.hh"
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+
 #include <unistd.h>
+#include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <pwd.h>
 
 #include "simdini/ini.h"
 
 static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t kl_, const char *v_, size_t vl_, void *user_)
 {
-    ::vpkg::config *user = static_cast<::vpkg::config *>(user_);
+    ::vpkg::packages *user = static_cast<::vpkg::packages *>(user_);
 
     auto section = s_ ? std::string_view{s_, sl_} : std::string_view{""};
     auto key = std::string_view{k_, kl_};
@@ -75,11 +80,44 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
     return 0;
 }
 
-int vpkg::parse_config(::vpkg::config *out, const char *str, size_t len)
+int ::vpkg::config_init(::vpkg::config *config, const char *config_path)
 {
-    if (!ini_parse_string(static_cast<const char *>(str), len, cb_ini_vpkg_config, out)) {
-        return 1;
+    int rc = 0;
+    struct stat st;
+    int fd;
+
+    fd = open(config_path, O_RDONLY);
+    if (fd < 0) {
+        goto out_close;
     }
 
-    return 0;
+    if (fstat(fd, &st) < 0) {
+        goto out_close;
+    }
+
+    if (st.st_size != 0) {
+        config->mem = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (config->mem == MAP_FAILED) {
+            goto out_close;
+        }
+
+        if (!ini_parse_string(static_cast<const char *>(config->mem), config->len, cb_ini_vpkg_config, &config->packages)) {
+            errno = EINVAL;
+            goto out_close;
+        }
+    }
+
+    config->len = st.st_size;
+    rc = 0;
+
+out_close:
+    close(fd);
+    return rc;
+}
+
+void ::vpkg::config_fini(::vpkg::config *config)
+{
+    if (config->len) {
+        munmap(config->mem, config->len);
+    }
 }

@@ -102,21 +102,21 @@ struct vpkg_progress {
 };
 
 struct vpkg_check_update_cb_data {
-    vpkg::config *config;
+    vpkg::packages *packages;
 
     sem_t *sem_data;
     bool force;
 
-    std::vector<::vpkg::config::iterator> *packages_to_update;
+    std::vector<::vpkg::packages::iterator> *packages_to_update;
 };
 
 struct vpkg_do_update_thread_shared_data {
-    std::vector<::vpkg::config::iterator> *packages_to_update;
+    std::vector<::vpkg::packages::iterator> *packages_to_update;
     struct tqueue progress_queue;
     struct xbps_handle *xhp;
     struct xbps_repo *repo;
 
-    vpkg::config *config;
+    vpkg::packages *packages;
     std::atomic<unsigned long> next_package;
     std::atomic<unsigned long> packages_done;
 
@@ -137,7 +137,7 @@ struct vpkg_do_update_thread_data {
     size_t current_offset;
     int tid_local;
 
-    ::vpkg::config::iterator current;
+    ::vpkg::packages::iterator current;
 };
 
 static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, const char *pkgname, void *user_, bool *)
@@ -151,8 +151,8 @@ static int vpkg_check_update_cb(struct xbps_handle *xhp, xbps_object_t obj, cons
         return 0;
     }
 
-    auto it = user->config->find(pkgname);
-    if (it == user->config->end()) {
+    auto it = user->packages->find(pkgname);
+    if (it == user->packages->end()) {
         return 0;
     }
 
@@ -489,8 +489,8 @@ static void *vpkg_do_update_thread(void *arg_)
                     continue;
                 }
 
-                auto it = arg->shared->config->find(name);
-                if (it == arg->shared->config->end()) {
+                auto it = arg->shared->packages->find(name);
+                if (it == arg->shared->packages->end()) {
                     continue;
                 }
 
@@ -568,7 +568,7 @@ static int state_cb(const struct xbps_state_cb_data *xscb, void *user_)
     return 0;
 }
 
-static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *conf, std::vector<::vpkg::config::iterator> *packages_to_update, bool force_install, bool update, bool install)
+static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *packages, std::vector<::vpkg::packages::iterator> *packages_to_update, bool force_install, bool update, bool install)
 {
     int rv = 0;
     int npackagesmodified = 0;
@@ -582,7 +582,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::config *con
     shared.manual_size = shared.packages_to_update->size();
     shared.packages_done = 0;
     shared.next_package = 0;
-    shared.config = conf;
+    shared.packages = packages;
     shared.xhp = xhp;
     shared.repo = xbps_repo_open(xhp, VPKG_BINPKGS);
     shared.force = force_install;
@@ -884,12 +884,9 @@ int main(int argc, char **argv)
     vpkg::config config;
     xbps_handle xh;
     std::error_code ec;
-    std::vector<::vpkg::config::iterator> to_install;
+    std::vector<::vpkg::packages::iterator> to_install;
 
-    void *data = nullptr;
     int rv = EXIT_FAILURE;
-    struct stat st;
-    int config_fd;
     int opt;
 
     memset(&xh, 0, sizeof(xh));
@@ -920,25 +917,9 @@ int main(int argc, char **argv)
 
     argc -= optind, argv += optind;
 
-    config_fd = open(config_path, O_RDONLY);
-    if (config_fd < 0) {
-        perror_exit("unable to open config file");
-    }
-
-    if (fstat(config_fd, &st) < 0) {
-        perror_exit("unable to stat config file");
-    }
-
-    if (st.st_size != 0) {
-        data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, config_fd, 0);
-        if (data == MAP_FAILED) {
-            perror_exit("unable to map config file");
-        }
-
-        if (vpkg::parse_config(&config, static_cast<const char *>(data), st.st_size) != 0) {
-            fprintf(stderr, "unable to parse config file\n");
-            goto end_munmap;
-        }
+    if (vpkg::config_init(&config, config_path) != 0) {
+        perror("failed to parse config file");
+        goto end_munmap;
     }
 
     if ((errno = xbps_init(&xh)) != 0) {
@@ -964,8 +945,8 @@ int main(int argc, char **argv)
     to_install.reserve(argc);
 
     for (int i = 0; i < argc; i++) {
-        auto it = config.find(argv[i]);
-        if (it == config.end()) {
+        auto it = config.packages.find(argv[i]);
+        if (it == config.packages.end()) {
             fprintf(stderr, "package %s not found\n", argv[i]);
             continue;
         }
@@ -988,7 +969,7 @@ int main(int argc, char **argv)
         }
 
         vpkg_check_update_cb_data cbd;
-        cbd.config = &config;
+        cbd.packages = &config.packages;
         cbd.force = force;
         cbd.sem_data = &sem_data;
         cbd.packages_to_update = &to_install;
@@ -1004,7 +985,7 @@ int main(int argc, char **argv)
         goto end_xbps_lock;
     }
 
-    if (::download_and_install_multi(&xh, &config, &to_install, force, update, install) != 0) {
+    if (::download_and_install_multi(&xh, &config.packages, &to_install, force, update, install) != 0) {
         ;
     }
 
@@ -1019,11 +1000,7 @@ end_xbps:
     xbps_end(&xh);
 
 end_munmap:
-    if (data != NULL) {
-        munmap(data, st.st_size);
-    }
-
-    close(config_fd);
+    vpkg::config_fini(&config);
 
 out:
     return rv;

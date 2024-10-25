@@ -26,7 +26,14 @@ struct package {
     time_t last_modified{0};
 };
 
-using config = typename std::map<std::string_view, vpkg::package>;
+using packages = std::map<std::string_view, vpkg::package>;
+
+struct config {
+    ::vpkg::packages packages;
+
+    void *mem;
+    size_t len;
+};
 
 /*!
  * @param[in] str A non-nullterminated string, that will be parsed as ini.
@@ -36,7 +43,8 @@ using config = typename std::map<std::string_view, vpkg::package>;
  *
  * @return nonzero if any error occurred, the exact value is currently undefined.
  */
-int parse_config(::vpkg::config *out, const char *str, size_t len);
+int config_init(::vpkg::config *config, const char *config_path);
+void config_fini(::vpkg::config *config);
 }
 
 #endif // VPKG_CONFIG_HH_
