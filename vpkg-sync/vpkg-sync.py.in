@@ -1,6 +1,5 @@
 #!/bin/env python3
 
-import multiprocessing
 import subprocess
 import threading
 import itertools
@@ -18,6 +17,7 @@ import re
 
 import urllib.parse
 
+from concurrent.futures import ThreadPoolExecutor
 from pydantic.dataclasses import dataclass
 from pydantic import TypeAdapter
 
@@ -280,7 +280,9 @@ def debian_version_to_xbps(version: str) -> str:
     return re.sub("[-/_]", '.', version)
 
 
-def process_single_source(name, source):
+def process_single_source(s):
+    name, source = s
+
     global machine, shlibs
     print(f"Syncing {name}", file=sys.stderr)
 
@@ -424,13 +426,6 @@ def process_single_source(name, source):
         print_package(source)
 
 
-def thread_fn(begin, length):
-    assert config.sources is not None
-
-    for name, source in list(config.sources.items())[begin:begin+length]:
-        process_single_source(name, source)
-
-
 machine = platform.machine()
 match machine:
     case "i686": machine = "i386"
@@ -459,27 +454,8 @@ if __name__ == '__main__':
     if config.sources is None:
         exit(0)
 
-    try:
-        numthreads = multiprocessing.cpu_count()
-    except NotImplementedError:
-        numthreads = 1
-
-    numitems = len(config.sources)
-    if numthreads > numitems:
-        numthreads = numitems
-
-    if numthreads == 1:
-        for name, source in config.sources.items():
-            process_single_source(name, source)
-    else:
-        threads = []
-        for i in range(0, numthreads):
-            size = (numitems + (numthreads - 1)) // numthreads
-            threads.append(threading.Thread(target=thread_fn, args=(i*size, size)))
-            threads[i].start()
-
-        for i in range(0, numthreads):
-            threads[i].join()
+    with ThreadPoolExecutor() as executor:
+        executor.map(process_single_source, config.sources.items())
 
     with open("@@VPKG_XDEB_SHLIBS_PATH@@", "w") as shlibs_file:
         shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
