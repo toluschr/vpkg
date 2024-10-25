@@ -1,6 +1,6 @@
 #!/bin/env python3
-import re
 import sys
+import fnmatch
 import argparse
 
 # TODO: Use library for helper functions
@@ -21,13 +21,13 @@ def load_shlibs_mapping() -> dict[str, str]:
 
 parser = argparse.ArgumentParser(
     prog="vpkg-locate",
-    description="Locate vpkgs by provided shlibs using a regular expression")
-parser.add_argument("regex", help="Regular expression")
+    description="Locate vpkgs by provided shlibs using a wildcard")
+parser.add_argument("wildcard", help="wildcard")
 
 args = parser.parse_args()
 
 shlibs = load_shlibs_mapping()
 
 for sh, lib in shlibs.items():
-    if (ma := re.match(args.regex, sh)) is not None:
+    if fnmatch.fnmatch(sh, args.wildcard):
         print(sh, lib)
