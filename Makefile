@@ -76,6 +76,4 @@ install:
 	    -e 's|@@VPKG_XDEB_SHLIBS_PATH@@|$(VPKG_XDEB_SHLIBS_PATH)|g' \
 	    -e 's|@@VPKG_SYNC_CONFIG_PATH@@|$(VPKG_SYNC_CONFIG_PATH)|g' $< > $@
 
-	# m4 -D M4_VPKG_SYNC_CONFIG_PATH=/etc/vpkg-sync.toml -D M4_VPKG_INSTALL_CONFIG_PATH=/etc/vpkg-install.ini -D M4_XDEB_SHLIBS_PATH=/var/lib/vpkg/shlibs -P $< > $@
-
 -include $(DEP)
