@@ -71,7 +71,7 @@ class GithubRelease():
 @dataclass
 class Config():
     github_token: Optional[str] = None
-    sources: Optional[dict[str, DebianSource | GithubSource | PackageSpec]] = None
+    sources: dict[str, DebianSource | GithubSource | PackageSpec] = {}
 
 
 @dataclass
@@ -248,32 +248,32 @@ def print_package(p: PackageSpec):
 
     with print_lock:
         if p.version is not None:
-            print(f"[{p.name}-{p.version}]", file=vpkg_config_file)
+            print(f"[{p.name}-{p.version}]", file=vpkg_install_config_file)
         else:
-            print(f"[{p.name}]", file=vpkg_config_file)
+            print(f"[{p.name}]", file=vpkg_install_config_file)
 
         if p.url is not None:
-            print(f"url = {p.url}", file=vpkg_config_file)
+            print(f"url = {p.url}", file=vpkg_install_config_file)
 
         if p.deps:
-            print(f"deps = {' '.join(p.deps)}", file=vpkg_config_file)
+            print(f"deps = {' '.join(p.deps)}", file=vpkg_install_config_file)
 
         if p.not_deps:
-            print(f"not_deps = {' '.join(p.not_deps)}", file=vpkg_config_file)
+            print(f"not_deps = {' '.join(p.not_deps)}", file=vpkg_install_config_file)
 
         if p.replaces:
-            print(f"replaces = {' '.join(p.replaces)}", file=vpkg_config_file)
+            print(f"replaces = {' '.join(p.replaces)}", file=vpkg_install_config_file)
 
         if p.provides:
-            print(f"provides = {' '.join(p.provides)}", file=vpkg_config_file)
+            print(f"provides = {' '.join(p.provides)}", file=vpkg_install_config_file)
 
         if p.last_modified is not None:
             assert isinstance(p.last_modified, datetime)
 
             last_modified_unix = int(time.mktime(p.last_modified.timetuple()))
-            print(f"last_modified = {last_modified_unix}", file=vpkg_config_file)
+            print(f"last_modified = {last_modified_unix}", file=vpkg_install_config_file)
 
-        print("", file=vpkg_config_file)
+        print("", file=vpkg_install_config_file)
 
 
 def debian_version_to_xbps(version: str) -> str:
@@ -426,38 +426,31 @@ def process_single_source(s):
         print_package(source)
 
 
-machine = platform.machine()
-match machine:
-    case "i686": machine = "i386"
-    case "x86_64": machine = "amd64"
-    case "armv7l": machine = "armhf"
-    case "aarch64": machine = "arm64"
-    case _: raise ValueError(machine)
-
-DEBIAN_BINARY = f"binary-{machine}"
+match platform.machine():
+    case "i686": DEBIAN_BINARY = "binary-i386"
+    case "x86_64": DEBIAN_BINARY = "binary-amd64"
+    case "armv7l": DEBIAN_BINARY = "binary-armhf"
+    case "aarch64": DEBIAN_BINARY = "binary-arm64"
+    case machine: raise ValueError(machine)
 
 # @todo: Don't output in critical section. Use queue.
 print_lock = threading.Lock()
 data_lock = threading.Lock()
-vpkg_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "w+")
+vpkg_install_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "w+")
 
-if __name__ == '__main__':
-    with open("@@VPKG_SYNC_CONFIG_PATH@@", "rb") as config_file:
-        p = tomllib.load(config_file)
+with open("@@VPKG_SYNC_CONFIG_PATH@@", "rb") as config_file:
+    vpkg_sync_config = tomllib.load(config_file)
 
-    os.environ["XDEB_SHLIBS"] = "@@VPKG_XDEB_SHLIBS_PATH@@"
-    subprocess.run(["xdeb", "-SQ"])
+os.environ["XDEB_SHLIBS"] = "@@VPKG_XDEB_SHLIBS_PATH@@"
+subprocess.run(["xdeb", "-SQ"])
 
-    shlibs = load_shlibs_mapping()
-    config = TypeAdapter(Config).validate_python(p)
+shlibs = load_shlibs_mapping()
+config = TypeAdapter(Config).validate_python(vpkg_sync_config)
 
-    if config.sources is None:
-        exit(0)
+with ThreadPoolExecutor() as executor:
+    executor.map(process_single_source, config.sources.items())
 
-    with ThreadPoolExecutor() as executor:
-        executor.map(process_single_source, config.sources.items())
+with open("@@VPKG_XDEB_SHLIBS_PATH@@", "w") as shlibs_file:
+    shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
 
-    with open("@@VPKG_XDEB_SHLIBS_PATH@@", "w") as shlibs_file:
-        shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
-
-    vpkg_config_file.close()
+vpkg_install_config_file.close()
