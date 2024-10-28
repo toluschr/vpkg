@@ -101,7 +101,8 @@ def load_shlibs_mapping() -> dict[str, str]:
 
 
 def is_library(name: str) -> bool:
-    return re.match(r"^lib.*", name) is not None
+    return re.match(r"^lib.*", name) is not None or \
+           re.match(r"^python3-.*", name) is not None
 
 
 def renaming_rules(old_name: str) -> str:
