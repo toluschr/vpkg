@@ -1,5 +1,9 @@
 include config.mk
 
+TEMPLATES += vpkg/defs.h
+TEMPLATES += vpkg-sync/vpkg-sync.py
+TEMPLATES += vpkg-locate/vpkg-locate.py
+
 DESTDIR := /usr/local
 
 CC := gcc
@@ -25,8 +29,14 @@ OBJ += tqueue/tqueue.o
 DEP = $(OBJ:%.o=%.d)
 
 .PHONY: all, clean, install
+all: $(TEMPLATES) vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync
 
-all: vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync
+clean:
+	-rm -f $(TEMPLATES) vpkg/defs.h vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-sync/vpkg-sync vpkg-sync/vpkg-sync.py $(OBJ) $(DEP)
+
+install:
+	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
+	install -m755 -t $(DESTDIR)/bin vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
 
 vpkg-locate/vpkg-locate: vpkg-locate/vpkg-locate.py
 	install -m 0755 $< $@
@@ -35,7 +45,6 @@ vpkg-sync/vpkg-sync: vpkg-sync/vpkg-sync.py
 	install -m 0755 $< $@
 
 vpkg-install/vpkg-install: \
-	vpkg/config.hh \
 	vpkg-install/repodata.o \
 	vpkg-install/vpkg-install.o \
 	tqueue/tqueue.o \
@@ -45,19 +54,11 @@ vpkg-install/vpkg-install: \
 	$(CXX) $(LD_FLAGS) $^ -o $@
 
 vpkg-query/vpkg-query: \
-	vpkg/config.hh \
 	vpkg-query/vpkg-query.o \
 	simdini/ini.o \
 	vpkg/config.o \
 	vpkg/util.o
 	$(CXX) $(LD_FLAGS) $^ -o $@
-
-clean:
-	-rm -f vpkg/config.hh vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-sync/vpkg-sync vpkg-sync/vpkg-sync.py $(OBJ) $(DEP)
-
-install:
-	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
-	install -m755 -t $(DESTDIR)/bin vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
 
 %.o: %.c Makefile
 	$(CC) $(CC_FLAGS) -c -MMD $< -o $@
@@ -68,7 +69,7 @@ install:
 %.o: %.cpp Makefile
 	$(CXX) $(CXX_FLAGS) -c -MMD $< -o $@
 
-%: %.in Makefile config.mk
+$(TEMPLATES): %: %.in Makefile config.mk .git
 	sed -e 's|@@VPKG_REVISION@@|$(VPKG_REVISION)|g' \
 	    -e 's|@@VPKG_TEMPDIR_PATH@@|$(VPKG_TEMPDIR_PATH)|g' \
 	    -e 's|@@VPKG_BINPKGS_PATH@@|$(VPKG_BINPKGS_PATH)|g' \

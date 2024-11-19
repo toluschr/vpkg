@@ -5,15 +5,10 @@
 #include <string>
 #include <map>
 
+#include <stddef.h>
 #include <xbps.h>
 
-#include <stddef.h>
-
-#define VPKG_REVISION "@@VPKG_REVISION@@"
-#define VPKG_TEMPDIR "@@VPKG_TEMPDIR_PATH@@"
-#define VPKG_BINPKGS "@@VPKG_BINPKGS_PATH@@"
-#define VPKG_CONFIG_PATH "@@VPKG_INSTALL_CONFIG_PATH@@"
-#define VPKG_XDEB_SHLIBS "@@VPKG_XDEB_SHLIBS_PATH@@"
+#include "defs.h"
 
 namespace vpkg {
 struct package {
