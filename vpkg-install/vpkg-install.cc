@@ -127,6 +127,7 @@ struct vpkg_do_update_thread_shared_data {
 
     sem_t sem_data;
     sem_t sem_prod_cons;
+    sem_t sem_progress_limit;
 
     xbps_dictionary_t idx, idxmeta, idxstage;
 };
@@ -183,6 +184,7 @@ static int post_state(struct vpkg_do_update_thread_data *self, enum vpkg_progres
     data->current_offset = self->current_offset;
     data->tid_local = self->tid_local;
 
+    sem_wait(&self->shared->sem_progress_limit);
     while (tqueue_put_node(&self->shared->progress_queue, node) < 0) {
         assert(errno == EINTR);
     }
@@ -214,6 +216,7 @@ static void *post_error(struct vpkg_do_update_thread_data *self, const char *fmt
     }
     va_end(va);
 
+    sem_wait(&self->shared->sem_progress_limit);
     while (tqueue_put_node(&self->shared->progress_queue, node) < 0) {
         assert(errno == EINTR);
     }
@@ -241,7 +244,7 @@ static int progressfn(void *self_, curl_off_t dltotal, curl_off_t dlnow, curl_of
     data->ultotal = ultotal;
     data->ulnow = ulnow;
 
-    // @todo: handle EOVERFLOW by using a special limiting semaphore
+    sem_wait(&self->shared->sem_progress_limit);
     while (tqueue_put_node(&self->shared->progress_queue, node) < 0) {
         assert(errno == EINTR);
     }
@@ -520,6 +523,7 @@ static void *vpkg_do_update_thread(void *arg_)
         }
 
         if ((arg->shared->packages_done += 1) >= arg->shared->packages_to_update->size()) {
+            sem_wait(&arg->shared->sem_progress_limit);
             while (tqueue_put_node(&arg->shared->progress_queue, NULL) < 0) {
                 assert(errno == EINTR);
             }
@@ -614,6 +618,11 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *p
         goto out_destroy_sem_prod_cons;
     }
 
+    if (sem_init(&shared.sem_progress_limit, 0, SEM_VALUE_MAX) < 0) {
+        rv = errno;
+        goto out_destroy_sem_progress_limit;
+    }
+
     maxthreads = sysconf(_SC_NPROCESSORS_ONLN);
     if (maxthreads == (unsigned long)-1) {
         fprintf(stderr, "failed to get core count: %s, executing using one worker thread.\n", strerror(errno));
@@ -667,6 +676,8 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *p
             while (tqueue_get_node(&shared.progress_queue, &n) < 0) {
                 assert(errno == EINTR);
             }
+
+            assert(sem_post(&shared.sem_progress_limit) == 0);
 
             if (n == NULL) {
                 break;
@@ -854,6 +865,9 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *p
 
 out_destroy_queue:
     assert(tqueue_fini(&shared.progress_queue) == 0);
+
+out_destroy_sem_progress_limit:
+    assert(sem_destroy(&shared.sem_progress_limit) == 0);
 
 out_destroy_sem_prod_cons:
     assert(sem_destroy(&shared.sem_prod_cons) == 0);
