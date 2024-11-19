@@ -1,3 +1,5 @@
+*.o
+*.d
 
 /vpkg/defs.h
 /vpkg-sync/vpkg-sync
