@@ -20,6 +20,7 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pydantic.dataclasses import dataclass
 from pydantic import TypeAdapter
+from dataclasses import field
 
 from datetime import datetime
 from typing import Optional
@@ -71,7 +72,7 @@ class GithubRelease():
 @dataclass
 class Config():
     github_token: Optional[str] = None
-    sources: dict[str, DebianSource | GithubSource | PackageSpec] = {}
+    sources: dict[str, DebianSource | GithubSource | PackageSpec] = field(default_factory=dict)
 
 
 @dataclass
