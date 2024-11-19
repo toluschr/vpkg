@@ -40,9 +40,11 @@ install:
 
 vpkg-locate/vpkg-locate: vpkg-locate/vpkg-locate.py
 	install -m 0755 $< $@
+	pyright vpkg-locate
 
 vpkg-sync/vpkg-sync: vpkg-sync/vpkg-sync.py
 	install -m 0755 $< $@
+	pyright vpkg-sync
 
 vpkg-install/vpkg-install: \
 	vpkg-install/repodata.o \
