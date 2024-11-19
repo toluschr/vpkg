@@ -13,6 +13,15 @@ issues, but nothing is guaranteed. You have been warned.
 3 CLI utilities: `vpkg-sync`, `vpkg-query`, and `vpkg-install`. The latter two
 are akin to their `xbps` counterparts.
 
+## Features
+
+- Seamlessly install deb packages on voidlinux
+- Automatically update deb installed packages using ...
+  - ... GitHub releases
+  - ... Debian repos
+  - ... HTTP URLs
+- Automatically find which package provides a library
+
 ## Dependencies
 
 ```
