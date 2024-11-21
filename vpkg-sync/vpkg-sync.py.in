@@ -450,7 +450,7 @@ shlibs = load_shlibs_mapping()
 config = TypeAdapter(Config).validate_python(vpkg_sync_config)
 
 with ThreadPoolExecutor() as executor:
-    executor.map(process_single_source, config.sources.items())
+    list(executor.map(process_single_source, config.sources.items()))
 
 with open("@@VPKG_XDEB_SHLIBS_PATH@@", "w") as shlibs_file:
     shlibs_file.write('\n'.join([' '.join(item) for item in shlibs.items()]))
