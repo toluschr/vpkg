@@ -469,6 +469,10 @@ static void *vpkg_do_update_thread(void *arg_)
             }
         }
 
+        if (binpkgd == NULL) {
+            return post_error(arg, "failed to register binpkg");
+        }
+
         post_state(arg, vpkg_progress::DONE);
 
         xbps_object_t obj = xbps_dictionary_get(binpkgd, "run_depends");

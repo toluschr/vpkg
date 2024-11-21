@@ -283,6 +283,11 @@ xbps_dictionary_t repodata_add(struct xbps_handle *xhp, const char *pathname,
     char pkgname[XBPS_NAME_SIZE];
     xbps_dictionary_t binpkgd = xbps_archive_fetch_plist(pathname, "/props.plist");
 
+    if (binpkgd == NULL) {
+        fprintf(stderr, "not an xbps package: %s\n", pathname);
+        return NULL;
+    }
+
     if (!xbps_dictionary_get_cstring_nocopy(binpkgd, "architecture", &architecture)) {
         fprintf(stderr, "architecture unset\n");
         xbps_object_release(binpkgd);
