@@ -80,6 +80,7 @@ class DebianPackage():
     name: str
     package: str
     version: str
+    architecture: str
     depends: list[str]
     replaces: list[str]
     provides: list[str]
@@ -223,6 +224,7 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
             package[key.lower()] = value
 
         package["package"] = package["package"]
+        package["architecture"] = package["architecture"]
         package["name"] = renaming_rules(package["package"])
 
         if "depends" in package:
@@ -327,6 +329,7 @@ def process_single_source(s):
             return
 
         packages = parse_debian_package(content)
+        packages = list(filter(lambda package: package.architecture == "all" or package.architecture == DEBIAN_ARCH, packages))
         cnt = True
 
         while cnt:
@@ -426,14 +429,17 @@ def process_single_source(s):
             source.last_modified = t
 
         print_package(source)
-
+    else:
+        print(f"{name}: Invalid source", file=sys.stderr)
 
 match platform.machine():
-    case "i686": DEBIAN_BINARY = "binary-i386"
-    case "x86_64": DEBIAN_BINARY = "binary-amd64"
-    case "armv7l": DEBIAN_BINARY = "binary-armhf"
-    case "aarch64": DEBIAN_BINARY = "binary-arm64"
+    case "i686": DEBIAN_ARCH = "i386"
+    case "x86_64": DEBIAN_ARCH = "amd64"
+    case "armv7l": DEBIAN_ARCH = "armhf"
+    case "aarch64": DEBIAN_ARCH = "arm64"
     case machine: raise ValueError(machine)
+
+DEBIAN_BINARY = f"binary-{DEBIAN_ARCH}"
 
 # @todo: Don't output in critical section. Use queue.
 print_lock = threading.Lock()
