@@ -219,7 +219,7 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
             if entry_string[0].isspace():
                 continue
 
-            key, value = entry_string.split(": ", 1)
+            key, value = (entry_string.split(": ", 1) + [""])[:2]
             package[key.lower()] = value
 
         package["package"] = package["package"]
