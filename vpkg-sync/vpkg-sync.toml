@@ -25,6 +25,13 @@ deps = ["libwxgtk3.2-1t64-deb>=0",
 deps = ["libjpeg62-turbo-deb>=0"]
 
 
+# zotero
+[sources.zotero]
+base_url = "https://zotero.retorque.re/file/apt-package-archive"
+distribution = "/"
+components = []
+
+
 # ungoogled chromium
 [sources.ungoogled-chromium-debian]
 repository = "berkley4/ungoogled-chromium-debian"
