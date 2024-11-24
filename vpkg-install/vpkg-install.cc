@@ -665,6 +665,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *p
 
         bool anyerr = false;
         for (;;) {
+            // @fixme: Handle terminal overflow when ws.ws_row < maxthreads.
             struct tqueue_node *n;
             RETRY_EINTR(tqueue_get_node(&shared.progress_queue, &n));
             ASSERT_NOERR(sem_post(&shared.sem_progress_limit));
