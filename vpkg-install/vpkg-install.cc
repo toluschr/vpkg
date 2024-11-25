@@ -33,12 +33,9 @@
 #include <atomic>
 #include <vector>
 
-#define RETRY_EINTR(C) while ((C) < 0) { assert(errno == EINTR); }
-#define ASSERT_NOERR(C) assert((C) == 0);
-
 static void usage(int code)
 {
-    fprintf(stderr, "usage: vpkg-install [-vfRu] [-c <config_path>]\n");
+    fprintf(stderr, "usage: vpkg-install [-vfRuS] [-c <config_path>]\n");
     exit(code);
 }
 
@@ -881,6 +878,7 @@ out_close_repo:
 
 int main(int argc, char **argv)
 {
+    bool sync = false;
     bool force = false;
     bool update = false;
     bool install = true;
@@ -897,7 +895,7 @@ int main(int argc, char **argv)
     memset(&xh, 0, sizeof(xh));
     curl_global_init(CURL_GLOBAL_ALL);
 
-    while ((opt = getopt(argc, argv, ":c:vfuN")) != -1) {
+    while ((opt = getopt(argc, argv, ":c:vfuNS")) != -1) {
         switch (opt) {
         case 'N':
             install = false;
@@ -912,6 +910,9 @@ int main(int argc, char **argv)
             fprintf(stderr, "vpkg-%s\n", VPKG_REVISION);
             exit(EXIT_FAILURE);
             break;
+        case 'S':
+            sync = true;
+            break;
         case 'f':
             force = true;
             break;
@@ -921,6 +922,32 @@ int main(int argc, char **argv)
     }
 
     argc -= optind, argv += optind;
+
+    if (sync) {
+        pid_t pid;
+        switch ((pid = fork())) {
+        int status;
+
+        case 0:
+            execlp("vpkg-sync", "vpkg-sync", NULL);
+            perror("failed to execute vpkg-sync");
+            exit(EXIT_FAILURE);
+        case -1:
+            perror("failed to fork");
+            goto end_curl;
+        default:
+            if (RETRY_EINTR(waitpid(pid, &status, 0)) < 0) {
+                perror("failed to waitpid");
+                goto end_curl;
+            }
+
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
+                rv = WIFEXITED(status) ? WEXITSTATUS(status) : EXIT_FAILURE;
+                goto end_curl;
+            }
+            break;
+        }
+    }
 
     if (vpkg::config_init(&config, config_path) != 0) {
         perror("failed to parse config file");
@@ -1006,6 +1033,9 @@ end_xbps:
 
 end_munmap:
     vpkg::config_fini(&config);
+
+end_curl:
+    curl_global_cleanup();
 
 out:
     return rv;
