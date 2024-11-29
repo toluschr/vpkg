@@ -10,17 +10,33 @@ issues, but nothing is guaranteed. You have been warned.
 # vpkg
 
 `vpkg` is a meta package manager, wrapped around `xdeb` and `xbps`. It provides
-3 CLI utilities: `vpkg-sync`, `vpkg-query`, and `vpkg-install`. The latter two
-are akin to their `xbps` counterparts.
+4 CLI utilities: `vpkg-install`, `vpkg-query`, `vpkg-locate` and `vpkg-sync`.
+The former two are akin to their `xbps` counterparts.
 
 ## Features
 
 - Seamlessly install deb packages on voidlinux
+- Multithreaded package conversion
 - Automatically update deb installed packages using ...
   - ... GitHub releases
   - ... Debian repos
   - ... HTTP URLs
 - Automatically find which package provides a library
+
+## Brief overview
+
+After installing `vpkg`, the default configuration file should provide ample packages.
+
+Sync the repositories and install discord using `vpkg-install -S discord`.
+
+This will query the newest package versions, download the discord deb from
+their website, convert the package using xdeb and register it using libxbps.
+
+After that, the package acts like any other native package and can be removed
+using `xbps-remove`.
+
+
+**Note:** Do not sync the repositories every single time, it is slow and may get rate limited by package providers.
 
 ## Dependencies
 
@@ -38,6 +54,8 @@ python3-pydantic
 ```
 
 ## vpkg-sync
+
+**Note:** The user should prefer `vpkg-install -S`.
 
 `vpkg-sync` is a Python utility required to tell `vpkg-install` which packages
 are available. The user provides a configuration file `/etc/vpkg-sync.toml`,
