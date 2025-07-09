@@ -1,6 +1,7 @@
 #include "util.hh"
 
 #include <algorithm>
+#include <sys/stat.h>
 
 #include <assert.h>
 #include <string.h>

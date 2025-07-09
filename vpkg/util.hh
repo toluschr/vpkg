@@ -2,6 +2,7 @@
 #define VPKG_UTIL_H_
 
 #include <xbps.h>
+#include <time.h>
 
 #include "vpkg/config.hh"
 
