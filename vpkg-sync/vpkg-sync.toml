@@ -19,10 +19,18 @@ deps = ["libwxgtk3.2-1t64-deb>=0",
         "libwxgtk-gl3.2-1t64-deb>=0",
         "libwxbase3.2-1t64-deb>=0",
         "libstdc++6-deb>=0",
-        "libjpeg62-turbo-deb>=0"]
+        "libjpeg62-turbo-deb>=0",
+        "libcurl3t64-gnutls-deb>=0",
+        "libngtcp2-crypto-gnutls8-deb>=0"]
 
 [sources.debian-unstable.packages."libwxgtk3.2-1t64-deb"]
 deps = ["libjpeg62-turbo-deb>=0"]
+
+[sources.oriedita]
+repository = "oriedita/oriedita"
+
+[sources.oriedita.packages."*_amd64.deb"]
+name = "oriedita"
 
 
 # zotero
@@ -64,14 +72,6 @@ repository = "brave/brave-browser"
 
 [sources.brave-browser.packages."*_amd64.deb"]
 name = "brave-browser"
-
-
-# jan
-[sources.jan]
-repository = "janhq/jan"
-
-[sources.jan.packages."jan-linux-amd64-*.deb"]
-name = "jan"
 
 
 # plasticity
@@ -143,25 +143,6 @@ components = ["xenial", "main"]
 base_url = "https://packagecloud.io/slacktechnologies/slack/"
 distribution = "debian"
 components = ["jessie", "main"]
-
-
-# llvm19
-# [sources.llvm19]
-# base_url = "https://apt.llvm.org/"
-# distribution = "bullseye"
-# components = ["llvm-toolchain-bullseye", "main"]
-#
-# [sources.llvm19.packages.clang-19]
-# name = "clang19"
-#
-# [sources.llvm19.packages.clang-format-19]
-# name = "clang-format19"
-#
-# [sources.llvm19.packages.libclang-19-dev]
-# name = "libclang19-dev"
-#
-# [sources.llvm19.packages.libclang-common-19-dev]
-# name = "clang19-headers"
 
 
 # code

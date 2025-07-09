@@ -228,17 +228,17 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
         package["name"] = renaming_rules(package["package"])
 
         if "depends" in package:
-            package["depends"] = [renaming_rules(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["depends"])]
+            package["depends"] = [renaming_rules(re.sub(" .*", "", p)) + "_1" for p in re.split(", | \\| ", package["depends"])]
         else:
             package["depends"] = []
 
         if "replaces" in package:
-            package["replaces"] = [renaming_rules(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["replaces"])]
+            package["replaces"] = [renaming_rules(re.sub(" .*", "", p)) + "_1" for p in re.split(", | \\| ", package["replaces"])]
         else:
             package["replaces"] = []
 
         if "provides" in package:
-            package["provides"] = [renaming_rules(re.sub(" .*", "", p)) for p in re.split(", | \\| ", package["provides"])]
+            package["provides"] = [renaming_rules(re.sub(" .*", "", p)) + "_1" for p in re.split(", | \\| ", package["provides"])]
         else:
             package["provides"] = []
 
@@ -325,7 +325,7 @@ def process_single_source(s):
                 content = function(response.content)
                 break
         else:
-            print(f"{name}: request failed", file=sys.stderr)
+            print(f"{name}: Unable to find Package index under {binary_path}", file=sys.stderr)
             return
 
         packages = parse_debian_package(content)
@@ -364,9 +364,9 @@ def process_single_source(s):
             p.name = p.name if p.name is not None else v.name
             p.url = p.url if p.url is not None else deb_url
             p.version = p.version if p.version is not None else debian_version_to_xbps(v.version)
-            p.deps = p.deps if p.deps is not None else [f"{d}>=0" for d in v.depends if not (is_library(d) or should_ignore(d))]
+            p.deps = p.deps if p.deps is not None else [f"{d}>=0" for d in v.depends if not (is_library(d) or should_ignore(d) or not source.auto_deps)]
             p.replaces = p.replaces if p.replaces is not None else [f"{d}>=0" for d in v.replaces if not should_ignore(d)]
-            p.provides = p.provides if p.provides is not None else [f"{d}-{p.version}" for d in v.provides if not should_ignore(d)]
+            p.provides = p.provides if p.provides is not None else [f"{d}-{p.version}_1" for d in v.provides if not should_ignore(d)]
 
             print_package(p)
 
