@@ -8,17 +8,32 @@
 extern "C" {
 #endif
 
-bool repodata_flush(struct xbps_handle *xhp, const char *repodir,
-                    const char *reponame, xbps_dictionary_t idx,
-                    xbps_dictionary_t meta, const char *compression);
+int
+repodata_flush(
+    const char *repodir,
+    const char *arch,
+    xbps_dictionary_t index,
+    xbps_dictionary_t stage,
+    xbps_dictionary_t meta,
+    const char *compression);
 
-bool repodata_commit(struct xbps_handle *xhp, const char *repodir,
-                            xbps_dictionary_t idx, xbps_dictionary_t meta,
-                            xbps_dictionary_t stage, const char *compression);
 
-xbps_dictionary_t repodata_add(struct xbps_handle *xhp, const char *pathname,
-                               xbps_dictionary_t idx, xbps_dictionary_t meta,
-                               xbps_dictionary_t stage);
+int
+repodata_commit(
+    const char *repodir,
+    const char *repoarch,
+    xbps_dictionary_t index,
+    xbps_dictionary_t stage,
+    xbps_dictionary_t meta,
+    const char *compression);
+
+int
+index_add_pkg(
+    struct xbps_handle *xhp,
+    xbps_dictionary_t index,
+    xbps_dictionary_t stage,
+    const char *file,
+    bool force);
 
 #ifdef __cplusplus
 }

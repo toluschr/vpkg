@@ -447,7 +447,13 @@ static void *vpkg_do_update_thread(void *arg_)
                     }
 
                     RETRY_EINTR(sem_wait(&arg->shared->sem_data));
-                    binpkgd = repodata_add(arg->shared->xhp, buf, arg->shared->idx, arg->shared->idxmeta, arg->shared->idxstage);
+
+                    if ((errno = - index_add_pkg(arg->shared->xhp, arg->shared->idx, arg->shared->idxstage, buf, true)) != 0) {
+                        ASSERT_NOERR(sem_post(&arg->shared->sem_data));
+                        return post_error(arg, "index_add_pkg failed: %s", strerror(errno));
+                    }
+
+                    binpkgd = xbps_archive_fetch_plist(buf, "/props.plist");
                     ASSERT_NOERR(sem_post(&arg->shared->sem_data));
                 }
 
@@ -743,7 +749,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *p
         }
     }
 
-    repodata_commit(shared.xhp, VPKG_BINPKGS, shared.idx, shared.idxmeta, shared.idxstage, NULL);
+    repodata_commit(VPKG_BINPKGS, shared.xhp->target_arch ? shared.xhp->target_arch : shared.xhp->native_arch, shared.idx, shared.idxstage, shared.idxmeta, NULL);
 
     for (auto &binpkgd : shared.install_xbps) {
         const char *pkgver;
@@ -755,7 +761,7 @@ static int download_and_install_multi(struct xbps_handle *xhp, vpkg::packages *p
         }
 
         if (update) {
-            rv = xbps_transaction_update_pkg(xhp, pkgver);
+            rv = xbps_transaction_update_pkg(xhp, pkgver, force_install);
         } else {
             rv = xbps_transaction_install_pkg(xhp, pkgver, force_install);
         }
@@ -871,7 +877,7 @@ out_close_repo:
         xbps_object_release(shared.idxmeta);
 
     if (shared.repo)
-        xbps_repo_close(shared.repo);
+        xbps_repo_release(shared.repo);
 
     return rv;
 }
