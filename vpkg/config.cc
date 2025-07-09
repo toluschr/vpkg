@@ -82,8 +82,9 @@ static int cb_ini_vpkg_config(const char *s_, size_t sl_, const char *k_, size_t
 
 int ::vpkg::config_init(::vpkg::config *config, const char *config_path)
 {
-    int rc = 0;
+    int rc = 1;
     struct stat st;
+    void *data;
     int fd;
 
     fd = open(config_path, O_RDONLY);
@@ -96,17 +97,18 @@ int ::vpkg::config_init(::vpkg::config *config, const char *config_path)
     }
 
     if (st.st_size != 0) {
-        config->mem = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-        if (config->mem == MAP_FAILED) {
+        data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (data == MAP_FAILED) {
             goto out_close;
         }
 
-        if (!ini_parse_string(static_cast<const char *>(config->mem), config->len, cb_ini_vpkg_config, &config->packages)) {
+        if (!ini_parse_string(static_cast<const char *>(data), st.st_size, cb_ini_vpkg_config, &config->packages)) {
             errno = EINVAL;
             goto out_close;
         }
     }
 
+    config->mem = data;
     config->len = st.st_size;
     rc = 0;
 
