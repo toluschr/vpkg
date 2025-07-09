@@ -84,7 +84,7 @@ int ::vpkg::config_init(::vpkg::config *config, const char *config_path)
 {
     int rc = 1;
     struct stat st;
-    void *data;
+    void *data = NULL;
     int fd;
 
     fd = open(config_path, O_RDONLY);
