@@ -1,17 +1,17 @@
 # libgconf-2-4
-[sources.debian-buster]
-base_url = "https://deb.debian.org"
-distribution = "debian"
-components = ["buster", "main"]
-whitelist = ["libgconf-2-4-deb", "gconf2-common"]
+# [sources.debian-buster]
+# base_url = "https://deb.debian.org"
+# distribution = "debian"
+# components = ["buster", "main"]
+# whitelist = ["libgconf-2-4-deb", "gconf2-common"]
 
 
 # prusa slicer
 [sources.debian-unstable]
-base_url = "https://deb.debian.org"
-distribution = "debian"
-components = ["unstable", "main"]
-blacklist = ["libjpeg62-deb"]
+base_url = "https://deb.debian.org/debian"
+distribution = "unstable"
+components = [ "main"]
+blacklist = ["libjpeg62-deb", "procps"]
 
 [sources.debian-unstable.packages.prusa-slicer]
 deps = ["libwxgtk3.2-1t64-deb>=0",
@@ -26,17 +26,22 @@ deps = ["libwxgtk3.2-1t64-deb>=0",
 [sources.debian-unstable.packages."libwxgtk3.2-1t64-deb"]
 deps = ["libjpeg62-turbo-deb>=0"]
 
-[sources.oriedita]
-repository = "oriedita/oriedita"
+# [sources.oriedita]
+# repository = "oriedita/oriedita"
+# 
+# [sources.oriedita.packages."*_amd64.deb"]
+# name = "oriedita"
 
-[sources.oriedita.packages."*_amd64.deb"]
-name = "oriedita"
+[sources.duck]
+base_url = "https://s3.amazonaws.com/repo.deb.cyberduck.io"
+distribution = "stable"
+components = ["main"]
 
 
 # zotero
 [sources.zotero]
 base_url = "https://zotero.retorque.re/file/apt-package-archive"
-distribution = "/"
+distribution = ""
 components = []
 
 
@@ -67,19 +72,19 @@ name = "ungoogled-chromium"
 
 
 # brave browser
-[sources.brave-browser]
-repository = "brave/brave-browser"
-
-[sources.brave-browser.packages."*_amd64.deb"]
-name = "brave-browser"
+# [sources.brave-browser]
+# repository = "brave/brave-browser"
+# 
+# [sources.brave-browser.packages."*_amd64.deb"]
+# name = "brave-browser"
 
 
 # plasticity
-[sources.plasticity]
-repository = "nkallen/plasticity"
-
-[sources.plasticity.packages."*plasticity*amd64.deb"]
-name = "plasticity"
+# [sources.plasticity]
+# repository = "nkallen/plasticity"
+# 
+# [sources.plasticity.packages."*plasticity*amd64.deb"]
+# name = "plasticity"
 
 
 # obsidian
@@ -91,25 +96,25 @@ name = "obsidian"
 
 
 # scenebuilder
-[sources.scenebuilder]
-repository = "gluonhq/scenebuilder"
-
-[sources.scenebuilder.packages."SceneBuilder-*.deb"]
-name = "scenebuilder"
+# [sources.scenebuilder]
+# repository = "gluonhq/scenebuilder"
+# 
+# [sources.scenebuilder.packages."SceneBuilder-*.deb"]
+# name = "scenebuilder"
 
 
 # figma linux
-[sources.figma-linux]
-repository = "Figma-Linux/figma-linux"
-
-[sources.figma-linux.packages."figma-linux*amd64.deb"]
-name = "figma-linux"
+# [sources.figma-linux]
+# repository = "Figma-Linux/figma-linux"
+# 
+# [sources.figma-linux.packages."figma-linux*amd64.deb"]
+# name = "figma-linux"
 
 
 # gitkraken
-[sources.gitkraken]
-url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
-not_deps = ["musl"]
+# [sources.gitkraken]
+# url = "https://release.axocdn.com/linux/gitkraken-amd64.deb"
+# not_deps = ["musl"]
 
 
 # discord
@@ -118,38 +123,38 @@ url = "https://discord.com/api/download?platform=linux&format=deb"
 
 
 # unity
-[sources.unity]
-base_url = "https://hub-dist.unity3d.com/artifactory/"
-distribution = "hub-debian-prod-local"
-components = ["stable", "main"]
+# [sources.unity]
+# base_url = "https://hub-dist.unity3d.com/artifactory/"
+# distribution = "hub-debian-prod-local"
+# components = ["stable", "main"]
 
 
 # spotify
-[sources.spotify]
-base_url = "http://repository.spotify.com"
-distribution = ""
-components = ["stable", "non-free"]
+# [sources.spotify]
+# base_url = "http://repository.spotify.com"
+# distribution = ""
+# components = ["stable", "non-free"]
 
 
 # signal
 [sources.signal]
-base_url = "https://updates.signal.org/desktop/"
-distribution = "apt"
-components = ["xenial", "main"]
+base_url = "https://updates.signal.org/desktop/apt"
+distribution = "xenial"
+components = ["main"]
 
 
 # slack
 [sources.slack]
-base_url = "https://packagecloud.io/slacktechnologies/slack/"
-distribution = "debian"
-components = ["jessie", "main"]
+base_url = "https://packagecloud.io/slacktechnologies/slack/debian"
+distribution = "jessie"
+components = ["main"]
 
 
 # code
-[sources.code]
-url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
+# [sources.code]
+# url = "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"
 
 
 # code insiders
-[sources.code-insiders]
-url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"
+# [sources.code-insiders]
+# url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-deb-x64"

@@ -4,6 +4,7 @@ import subprocess
 import threading
 import itertools
 import requests
+import argparse
 import platform
 import pathlib
 import tomllib
@@ -215,7 +216,7 @@ def parse_debian_package(string: bytes | str) -> list[DebianPackage]:
             continue
 
         package = dict()
-        for entry_string in package_string.split("\n"):
+        for entry_string in filter(None, package_string.split("\n")):
             # skip continutations
             if entry_string[0].isspace():
                 continue
@@ -296,15 +297,14 @@ def process_single_source(s):
 
     if isinstance(source, DebianSource):
         parts = urllib.parse.urlparse(source.base_url)
-        base_path = pathlib.Path(parts.path if parts.path else "/")
+        archive_root = pathlib.Path(parts.path if parts.path else "/")
 
-        if source.distribution == "/":
-            distribution_path = base_path
-            binary_path = distribution_path
+        if source.distribution:
+            release_path = archive_root/"dists"/source.distribution
+            binary_path = release_path/'/'.join(source.components)/DEBIAN_BINARY
         else:
-            distribution_path = base_path/source.distribution
-            dists_path = distribution_path/"dists"
-            binary_path = dists_path/'/'.join(source.components)/DEBIAN_BINARY
+            release_path = archive_root
+            binary_path = release_path
 
         try_fetch = [(binary_path/"Packages.xz", lambda d:
                       lzma.decompress(d)),
@@ -351,7 +351,7 @@ def process_single_source(s):
             possible_shlibs = guess_shlibs_from_pkgname(v.package)
             manual_packages = source.packages if source.packages is not None else {}
 
-            deb_path = distribution_path/v.filename
+            deb_path = archive_root/v.filename
             deb_url = urllib.parse.urlunparse((parts.scheme,
                                                parts.netloc,
                                                deb_path.as_posix(),
