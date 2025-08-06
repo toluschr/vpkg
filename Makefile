@@ -15,6 +15,7 @@ CXX_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb -std=c++20
 LD_FLAGS += -lcurl -lxbps -larchive
 
 OBJ += vpkg-install/repodata.o
+OBJ += vpkg-install/index-add.o
 OBJ += vpkg-install/vpkg-install.o
 
 OBJ += vpkg-query/vpkg-query.o
@@ -48,6 +49,7 @@ vpkg-sync/vpkg-sync: vpkg-sync/vpkg-sync.py
 
 vpkg-install/vpkg-install: \
 	vpkg-install/repodata.o \
+	vpkg-install/index-add.o \
 	vpkg-install/vpkg-install.o \
 	tqueue/tqueue.o \
 	simdini/ini.o \
