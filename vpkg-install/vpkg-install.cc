@@ -1,6 +1,7 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <sys/utsname.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -891,14 +892,12 @@ int main(int argc, char **argv)
 
     const char *config_path = VPKG_CONFIG_PATH;
     vpkg::config config;
-    xbps_handle xh;
     std::error_code ec;
     std::vector<::vpkg::packages::iterator> to_install;
 
     int rv = EXIT_FAILURE;
     int opt;
 
-    memset(&xh, 0, sizeof(xh));
     curl_global_init(CURL_GLOBAL_ALL);
 
     while ((opt = getopt(argc, argv, ":c:vfuNS")) != -1) {
@@ -960,6 +959,8 @@ int main(int argc, char **argv)
         goto end_munmap;
     }
 
+    struct xbps_handle xh;
+    memset(&xh, 0, sizeof(xh));
     if ((errno = xbps_init(&xh)) != 0) {
         perror("xbps_init");
         goto out;
