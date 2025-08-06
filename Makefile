@@ -10,7 +10,7 @@ CC := gcc
 CC_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb
 
 CXX := g++
-CXX_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb -fpermissive -std=c++20
+CXX_FLAGS += -I . -Wall -Wextra -march=native -Og -ggdb -std=c++20
 
 LD_FLAGS += -lcurl -lxbps -larchive
 
