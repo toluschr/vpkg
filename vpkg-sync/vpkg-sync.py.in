@@ -444,7 +444,6 @@ DEBIAN_BINARY = f"binary-{DEBIAN_ARCH}"
 # @todo: Don't output in critical section. Use queue.
 print_lock = threading.Lock()
 data_lock = threading.Lock()
-vpkg_install_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "w+")
 
 with open("@@VPKG_SYNC_CONFIG_PATH@@", "rb") as config_file:
     vpkg_sync_config = tomllib.load(config_file)
@@ -452,8 +451,11 @@ with open("@@VPKG_SYNC_CONFIG_PATH@@", "rb") as config_file:
 os.environ["XDEB_SHLIBS"] = "@@VPKG_XDEB_SHLIBS_PATH@@"
 subprocess.run(["xdeb", "-SQ"])
 
+source_select = sys.argv[1:]
 shlibs = load_shlibs_mapping()
 config = TypeAdapter(Config).validate_python(vpkg_sync_config)
+config.sources = {k: v for k, v in config.sources.items() if not source_select or k in source_select}
+vpkg_install_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "a+" if source_select else "w+")
 
 with ThreadPoolExecutor() as executor:
     list(executor.map(process_single_source, config.sources.items()))
