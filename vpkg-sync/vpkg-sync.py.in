@@ -94,8 +94,7 @@ def load_shlibs_mapping() -> dict[str, str]:
 
         out = dict()
         for line in shlibs_data.strip().split('\n'):
-            if line.strip()[0] == '#':
-                continue
+            if re.match(r'^\s*(#.*)?$', line): continue
 
             key, val = line.split(' ')[:2]
             out[key] = val
