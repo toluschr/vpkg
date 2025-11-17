@@ -36,8 +36,8 @@ clean:
 	-rm -f $(TEMPLATES) vpkg/defs.h vpkg-install/vpkg-install vpkg-query/vpkg-query vpkg-sync/vpkg-sync vpkg-sync/vpkg-sync.py $(OBJ) $(DEP)
 
 install:
-	install -m644 -t /etc vpkg-sync/vpkg-sync.toml
-	install -m755 -t $(DESTDIR)/bin vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
+	install -Dm644 -t $(DESTDIR)/share/examples/vpkg vpkg-sync/vpkg-sync.toml
+	install -Dm755 -t $(DESTDIR)/bin vpkg-locate/vpkg-locate vpkg-sync/vpkg-sync vpkg-query/vpkg-query vpkg-install/vpkg-install
 
 vpkg-locate/vpkg-locate: vpkg-locate/vpkg-locate.py
 	install -m 0755 $< $@
