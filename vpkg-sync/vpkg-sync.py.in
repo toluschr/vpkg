@@ -447,14 +447,28 @@ data_lock = threading.Lock()
 with open("@@VPKG_SYNC_CONFIG_PATH@@", "rb") as config_file:
     vpkg_sync_config = tomllib.load(config_file)
 
+parser = argparse.ArgumentParser(
+    prog='vpkg-sync',
+    description='Sync package sources for the vpkg-install program',
+    epilog='vpkg-sync is a Python utility required to tell vpkg-install which packages are available. The user provides a configuration file /etc/vpkg-sync.toml, where they specify package sources.'
+)
+
+parser.add_argument('sources', nargs='?')
+parser.add_argument('-l', '--list', action='store_true')
+
+args = parser.parse_args()
+
+config = TypeAdapter(Config).validate_python(vpkg_sync_config)
+config.sources = {k: v for k, v in config.sources.items() if not args.sources or k in args.sources}
+
+if args.list:
+    print('\n'.join(config.sources.keys()))
+    exit()
+
 os.environ["XDEB_SHLIBS"] = "@@VPKG_XDEB_SHLIBS_PATH@@"
 subprocess.run(["xdeb", "-SQ"])
-
-source_select = sys.argv[1:]
 shlibs = load_shlibs_mapping()
-config = TypeAdapter(Config).validate_python(vpkg_sync_config)
-config.sources = {k: v for k, v in config.sources.items() if not source_select or k in source_select}
-vpkg_install_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "a+" if source_select else "w+")
+vpkg_install_config_file = open("@@VPKG_INSTALL_CONFIG_PATH@@", "a+" if args.sources else "w+")
 
 with ThreadPoolExecutor() as executor:
     list(executor.map(process_single_source, config.sources.items()))
